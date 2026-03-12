@@ -8,6 +8,11 @@ import pybullet_data
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation, Slerp
 
+try:
+    import imageio
+except ImportError:
+    imageio = None
+
 
 @dataclass
 class ExperimentConfig:
@@ -27,11 +32,20 @@ class ExperimentConfig:
     wheel_radius: float = 0.055
     wheel_width: float = 0.03
 
-    # 相机与可视化视角。
-    camera_distance: float = 1.8
-    camera_yaw: float = 50.0
-    camera_pitch: float = -25.0
-    camera_target: tuple[float, float, float] = (0.2, 0.0, 0.55)
+    # 相机与可视化视角（俯视偏侧，便于看到机械臂、小车与障碍球）。
+    # camera_target 是相机注视的世界坐标点，不是相机自身位置。
+    # camera_distance/yaw/pitch 决定相机围绕 target 的球坐标位置。
+    camera_distance: float = 1.0
+    camera_yaw: float = -225.0
+    camera_pitch: float = -15    
+    camera_target: tuple[float, float, float] = (0.15, 0.20, 0.45)
+
+    # 录像：轨迹执行阶段每帧采样后写入 MP4。
+    record_video: bool = True
+    video_output_path: str = "cbf_experiment.mp4"
+    video_fps: int = 30
+    video_width: int = 960
+    video_height: int = 720
 
     # 直线参考轨迹参数。
     # line_half_span: 直线在 x 方向上的半长度；
@@ -53,7 +67,7 @@ class ExperimentConfig:
     # 之前只改 yaw，会导致末端大部分时间仍接近“竖直朝下”。
     # 现在同时改变 roll / pitch / yaw，让四元数插值过程中的姿态变化更明显。
     start_euler_deg: tuple[float, float, float] = (180.0, 0.0, 0.0)
-    goal_euler_deg: tuple[float, float, float] = (140.0, -35.0, 0)
+    goal_euler_deg: tuple[float, float, float] = (140.0, 0, 0)
 
     # 执行器速度/力上限。
     ee_force_limit: float = 250.0
@@ -235,6 +249,12 @@ class SimulationScene:
             textSize=1.2,
             replaceItemUniqueId=self.status_text_id if self.status_text_id else -1,
         )
+
+    def capture_frame(self, width: int, height: int) -> np.ndarray:
+        """截取当前视角一帧，返回 (H, W, 3) RGB uint8。"""
+        _, _, rgb, _, _ = p.getCameraImage(width, height)
+        frame = np.array(rgb, dtype=np.uint8).reshape(height, width, 4)
+        return frame[:, :, :3]
 
 
 class JakaRobot:
@@ -872,6 +892,11 @@ class AvoidanceExperiment:
         total_time = self.config.trajectory_duration + self.config.hold_duration
         total_steps = int(total_time / self.config.dt)
 
+        video_frames: list[np.ndarray] = []
+        record_every = max(
+            1, int(round((1.0 / self.config.dt) / self.config.video_fps))
+        ) if self.config.record_video else 0
+
         try:
             while p.isConnected() and self.sim_step < total_steps:
                 current_time = self.sim_step * self.config.dt
@@ -908,6 +933,13 @@ class AvoidanceExperiment:
                 p.stepSimulation()
                 self._update_visuals(ee_pos, ref_pos, info)
 
+                if self.config.record_video and self.sim_step % record_every == 0:
+                    video_frames.append(
+                        self.scene.capture_frame(
+                            self.config.video_width, self.config.video_height,
+                        )
+                    )
+
                 if self.sim_step % self.config.print_every == 0:
                     print(
                         f"[step {self.sim_step:4d}] "
@@ -924,6 +956,15 @@ class AvoidanceExperiment:
             # 轨迹时间结束后，底座与关节均置零，并在终点附近闭环保持。
             self.robot.move_base(np.zeros(2), self.config.dt)
             self.robot.command_joint_velocities(np.zeros(self.robot.dof))
+
+            if self.config.record_video and video_frames:
+                if imageio is not None:
+                    out_path = self.config.video_output_path
+                    imageio.mimsave(out_path, video_frames, fps=self.config.video_fps)
+                    print(f"录像已保存: {out_path}")
+                else:
+                    print("未安装 imageio，无法输出录像。可执行: pip install imageio imageio-ffmpeg")
+
             print("===== 轨迹执行结束，保持窗口 (Ctrl+C 退出) =====")
             while p.isConnected():
                 obstacle_center = self.obstacle.update_from_slider()
