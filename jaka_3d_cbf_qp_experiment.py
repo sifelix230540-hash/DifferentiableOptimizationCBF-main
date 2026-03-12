@@ -20,9 +20,12 @@ class ExperimentConfig:
     dt: float = 1.0 / 240.0
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
 
-    # 桌面环境尺寸。
-    table_half: tuple[float, float, float] = (0.4, 0.3, 0.35)
-    tabletop_half: tuple[float, float, float] = (0.42, 0.32, 0.015)
+    # 移动小车外观尺寸。
+    # 机械臂底座固定在小车上甲板上方，控制时让小车与机械臂底座同步平移。
+    cart_body_half: tuple[float, float, float] = (0.24, 0.18, 0.05)
+    cart_deck_half: tuple[float, float, float] = (0.18, 0.14, 0.015)
+    wheel_radius: float = 0.055
+    wheel_width: float = 0.03
 
     # 相机与可视化视角。
     camera_distance: float = 1.8
@@ -34,13 +37,13 @@ class ExperimentConfig:
     # line_half_span: 直线在 x 方向上的半长度；
     # line_bias_y/z: 给参考直线施加偏置，使其“穿球附近但不过球心”。
     line_half_span: float = 0.14
-    line_bias_y: float = 0.12
+    line_bias_y: float = 0.08
     line_bias_z: float = 0.0
     trajectory_duration: float = 7.0
     hold_duration: float = 6
 
-    # 单障碍球参数。obstacle_initial_offset 的 z 是相对桌面的高度偏置。
-    obstacle_radius: float = 0.03
+    # 单障碍球参数。obstacle_initial_offset 的 z 是相对小车安装面的高度偏置。
+    obstacle_radius: float = 0.06
     obstacle_rgba: tuple[float, float, float, float] = (1.0, 0.35, 0.2, 0.75)
     obstacle_initial_offset: tuple[float, float, float] = (0.32, 0.4, 0.3)
     obstacle_slider_y_min: float = -0.30
@@ -50,20 +53,26 @@ class ExperimentConfig:
     # 之前只改 yaw，会导致末端大部分时间仍接近“竖直朝下”。
     # 现在同时改变 roll / pitch / yaw，让四元数插值过程中的姿态变化更明显。
     start_euler_deg: tuple[float, float, float] = (180.0, 0.0, 0.0)
-    goal_euler_deg: tuple[float, float, float] = (140.0, -35.0, 80.0)
+    goal_euler_deg: tuple[float, float, float] = (140.0, -35.0, 0)
 
     # 执行器速度/力上限。
     ee_force_limit: float = 250.0
     dq_limit: float = 1.0
     dq_nominal_gain: float = 0.25
+    # 底座平面移动速度上限（x/y，与 6 关节一起构成 8 自由度）。
+    base_vel_limit: float = 0.4
 
     # QP 中的跟踪/正则/CBF 权重。
     position_gain: float = 8
     orientation_gain: float = 2.5
     nullspace_weight: float = 0.1
-    slack_weight: float = 800.0
+    slack_weight: float = 200000.0
+    use_slack: bool = False
+    # True: 用 getClosestPoints 查询 mesh 表面最近点构造 CBF；
+    # False: 仅用各连杆坐标系原点（单点）构造 CBF。
+    use_mesh_cbf: bool = True
     cbf_alpha: float = 2
-    safety_margin: float = 0.05
+    safety_margin: float = 0.02
 
     # 打印频率与参考线绘制分辨率。
     print_every: int = 120
@@ -71,7 +80,7 @@ class ExperimentConfig:
 
 
 class SimulationScene:
-    """负责 PyBullet GUI、桌面环境与调试可视化。"""
+    """负责 PyBullet GUI、移动小车环境与调试可视化。"""
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
@@ -96,40 +105,94 @@ class SimulationScene:
             cameraTargetPosition=config.camera_target,
         )
 
+        self.cart_parts: list[tuple[int, np.ndarray, tuple[float, float, float, float]]] = []
         self.table_height = self._build_environment()
         self._draw_axes()
         self.status_text_id = None
 
     def _build_environment(self) -> float:
-        """创建地面、桌体和桌面板，并返回桌面顶面高度。"""
+        """创建地面与移动小车外观，并返回机械臂安装面的世界高度。"""
         plane_id = p.loadURDF("plane.urdf")
         p.changeVisualShape(plane_id, -1, rgbaColor=[0.6, 0.6, 0.6, 1.0])
 
-        table_half = self.config.table_half
-        table_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=table_half)
-        table_vis = p.createVisualShape(
-            p.GEOM_BOX, halfExtents=table_half, rgbaColor=[0.35, 0.25, 0.18, 1.0]
+        body_half = self.config.cart_body_half
+        deck_half = self.config.cart_deck_half
+        wheel_radius = self.config.wheel_radius
+        wheel_width = self.config.wheel_width
+
+        body_z = wheel_radius + body_half[2]
+        deck_z = wheel_radius + 2.0 * body_half[2] + deck_half[2]
+        top_height = wheel_radius + 2.0 * body_half[2] + 2.0 * deck_half[2]
+
+        body_vis = p.createVisualShape(
+            p.GEOM_BOX,
+            halfExtents=body_half,
+            rgbaColor=[0.18, 0.22, 0.28, 1.0],
+            specularColor=[0.6, 0.6, 0.6],
         )
-        p.createMultiBody(
+        body_id = p.createMultiBody(
             baseMass=0,
-            baseCollisionShapeIndex=table_col,
-            baseVisualShapeIndex=table_vis,
-            basePosition=[0.0, 0.0, table_half[2]],
+            baseCollisionShapeIndex=-1,
+            baseVisualShapeIndex=body_vis,
+            basePosition=[0.0, 0.0, body_z],
+        )
+        self.cart_parts.append(
+            (body_id, np.array([0.0, 0.0, body_z], dtype=float), (0.0, 0.0, 0.0, 1.0))
         )
 
-        top_half = self.config.tabletop_half
-        top_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=top_half)
-        top_vis = p.createVisualShape(
-            p.GEOM_BOX, halfExtents=top_half, rgbaColor=[0.78, 0.68, 0.55, 1.0]
+        deck_vis = p.createVisualShape(
+            p.GEOM_BOX,
+            halfExtents=deck_half,
+            rgbaColor=[0.82, 0.84, 0.88, 1.0],
+            specularColor=[0.7, 0.7, 0.7],
         )
-        p.createMultiBody(
+        deck_id = p.createMultiBody(
             baseMass=0,
-            baseCollisionShapeIndex=top_col,
-            baseVisualShapeIndex=top_vis,
-            basePosition=[0.0, 0.0, table_half[2] * 2 + top_half[2]],
+            baseCollisionShapeIndex=-1,
+            baseVisualShapeIndex=deck_vis,
+            basePosition=[0.0, 0.0, deck_z],
+        )
+        self.cart_parts.append(
+            (deck_id, np.array([0.0, 0.0, deck_z], dtype=float), (0.0, 0.0, 0.0, 1.0))
         )
 
-        return table_half[2] * 2 + top_half[2] * 2
+        wheel_vis = p.createVisualShape(
+            p.GEOM_CYLINDER,
+            radius=wheel_radius,
+            length=wheel_width,
+            rgbaColor=[0.08, 0.08, 0.08, 1.0],
+            specularColor=[0.2, 0.2, 0.2],
+        )
+        wheel_quat = p.getQuaternionFromEuler([math.pi / 2.0, 0.0, 0.0])
+        wheel_x = body_half[0] * 0.72
+        wheel_y = body_half[1] + wheel_width * 0.35
+        for local_pos in (
+            np.array([wheel_x, wheel_y, wheel_radius], dtype=float),
+            np.array([wheel_x, -wheel_y, wheel_radius], dtype=float),
+            np.array([-wheel_x, wheel_y, wheel_radius], dtype=float),
+            np.array([-wheel_x, -wheel_y, wheel_radius], dtype=float),
+        ):
+            wheel_id = p.createMultiBody(
+                baseMass=0,
+                baseCollisionShapeIndex=-1,
+                baseVisualShapeIndex=wheel_vis,
+                basePosition=local_pos.tolist(),
+                baseOrientation=wheel_quat,
+            )
+            self.cart_parts.append((wheel_id, local_pos, wheel_quat))
+
+        return top_height
+
+    def update_cart_pose(self, base_xy: np.ndarray) -> None:
+        """让小车外观与机械臂底座同步平移。"""
+        base_xy = np.asarray(base_xy, dtype=float).flatten()[:2]
+        for body_id, local_pos, local_quat in self.cart_parts:
+            world_pos = [
+                base_xy[0] + local_pos[0],
+                base_xy[1] + local_pos[1],
+                local_pos[2],
+            ]
+            p.resetBasePositionAndOrientation(body_id, world_pos, local_quat)
 
     def _draw_axes(self) -> None:
         """在机器人底座附近画出世界坐标轴，方便观察运动方向。"""
@@ -197,6 +260,9 @@ class JakaRobot:
         self.dof = len(self.active_joints)
         self.ee_link_index = self.active_joints[-1]
         self.cbf_link_indices = list(self.active_joints)
+        # 底座平面 x/y 位置（世界系），与 6 关节共同构成 8 自由度。
+        self.base_pos = np.array([0.0, 0.0], dtype=float)
+        self.total_dof = 2 + self.dof
 
         print(f"活动关节索引: {self.active_joints}")
         print(f"末端执行器连杆索引: {self.ee_link_index}")
@@ -206,6 +272,22 @@ class JakaRobot:
             p.setJointMotorControl2(self.body_id, joint_idx, p.VELOCITY_CONTROL, force=0)
 
         self.q_nominal = np.zeros(self.dof)
+
+    def move_base(self, v_base: np.ndarray, dt: float) -> None:
+        """根据底座平面速度积分更新底座位置，并重置 PyBullet 基座位姿。"""
+        v_clipped = np.clip(
+            np.asarray(v_base, dtype=float).flatten()[:2],
+            -self.config.base_vel_limit,
+            self.config.base_vel_limit,
+        )
+        self.base_pos += v_clipped * dt
+        base_pos_3d = p.getBasePositionAndOrientation(self.body_id)[0]
+        p.resetBasePositionAndOrientation(
+            self.body_id,
+            [self.base_pos[0], self.base_pos[1], base_pos_3d[2]],
+            [0.0, 0.0, 0.0, 1.0],
+        )
+        self.scene.update_cart_pose(self.base_pos)
 
     def _set_link_colors(self) -> None:
         """给各连杆设置更容易区分的配色。"""
@@ -285,6 +367,88 @@ class JakaRobot:
         jac_t, jac_r = self.get_link_jacobian(self.ee_link_index, q, dq)
         return np.vstack([jac_t, jac_r])
 
+    def get_augmented_ee_jacobian(self, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
+        """返回 6×8 增广雅可比：前两列对应底座 x/y 速度对末端 twist 的贡献，后 6 列为关节速度贡献。"""
+        jac_t, jac_r = self.get_link_jacobian(self.ee_link_index, q, dq)
+        # 底座平移：dx 只影响末端 x 线速度，dy 只影响末端 y 线速度；底座不旋转。
+        base_linear = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=float)
+        base_angular = np.zeros((3, 2), dtype=float)
+        base_block = np.vstack([base_linear, base_angular])
+        joint_block = np.vstack([jac_t, jac_r])
+        return np.hstack([base_block, joint_block])
+
+    def get_link_cbf_row_aug(
+        self,
+        link_idx: int,
+        normal: np.ndarray,
+        q: np.ndarray,
+        dq: np.ndarray,
+    ) -> np.ndarray:
+        """返回 1×8 的 CBF 梯度行：前 2 维为底座 x/y 对距离变化率，后 6 维为关节速度对距离变化率。"""
+        jac_t, _ = self.get_link_jacobian(link_idx, q, dq)
+        # 底座移动：d(dist)/d(base_vel) = normal 在 x,y 上的分量。
+        base_part = np.array([normal[0], normal[1]], dtype=float)
+        joint_part = normal @ jac_t
+        return np.concatenate([base_part, joint_part])
+
+    # ---- mesh-based CBF 辅助方法 ----
+
+    def get_closest_point_to_obstacle(
+        self, link_idx: int, obstacle_body_id: int, max_dist: float = 1.0,
+    ) -> tuple[np.ndarray, float, np.ndarray] | None:
+        """用 getClosestPoints 查询指定连杆碰撞 mesh 到障碍物的最近点。
+
+        返回 (closest_point_world, signed_distance, normal_from_obs_to_link) 或 None。
+        signed_distance > 0 表示分离，< 0 表示穿透。
+        """
+        contacts = p.getClosestPoints(
+            self.body_id, obstacle_body_id, max_dist, linkIndexA=link_idx,
+        )
+        if not contacts:
+            return None
+        best = min(contacts, key=lambda c: c[8])
+        pos_on_robot = np.array(best[5], dtype=float)
+        distance = float(best[8])
+        normal = np.array(best[7], dtype=float)
+        if np.linalg.norm(normal) < 1e-9:
+            normal = np.array([1.0, 0.0, 0.0], dtype=float)
+        else:
+            normal = normal / np.linalg.norm(normal)
+        return pos_on_robot, distance, normal
+
+    def get_link_cbf_row_aug_at_point(
+        self,
+        link_idx: int,
+        world_point: np.ndarray,
+        normal: np.ndarray,
+        q: np.ndarray,
+        dq: np.ndarray,
+    ) -> np.ndarray:
+        """在连杆 mesh 表面最近点处计算 1×8 增广 CBF 梯度行。
+
+        与 get_link_cbf_row_aug 的区别：雅可比不在连杆原点计算，
+        而是在 world_point 对应的局部坐标处计算，更精确地反映
+        表面点速度对安全函数的影响。
+        """
+        link_state = p.getLinkState(
+            self.body_id, link_idx, computeForwardKinematics=True,
+        )
+        link_pos = link_state[4]
+        link_orn = link_state[5]
+        inv_pos, inv_orn = p.invertTransform(link_pos, link_orn)
+        local_point, _ = p.multiplyTransforms(
+            inv_pos, inv_orn, world_point.tolist(), [0, 0, 0, 1],
+        )
+        zeros = np.zeros_like(q)
+        jac_t, _ = p.calculateJacobian(
+            self.body_id, link_idx, list(local_point),
+            q.tolist(), dq.tolist(), zeros.tolist(),
+        )
+        jac_t = np.array(jac_t, dtype=float)
+        base_part = np.array([normal[0], normal[1]], dtype=float)
+        joint_part = normal @ jac_t
+        return np.concatenate([base_part, joint_part])
+
     def command_joint_velocities(self, dq_cmd: np.ndarray) -> None:
         """向速度控制器发送关节速度命令，并进行限幅。"""
         dq_clip = np.clip(dq_cmd, -self.config.dq_limit, self.config.dq_limit)
@@ -313,10 +477,12 @@ class SphereObstacle:
             radius=config.obstacle_radius,
             rgbaColor=config.obstacle_rgba,
         )
+        collision = p.createCollisionShape(
+            p.GEOM_SPHERE, radius=config.obstacle_radius,
+        )
         self.body_id = p.createMultiBody(
             baseMass=0,
-            # 仅保留可视化球，避免与 CBF 避障形成双重约束。
-            baseCollisionShapeIndex=-1,
+            baseCollisionShapeIndex=collision,
             baseVisualShapeIndex=visual,
             basePosition=initial_pos.tolist(),
         )
@@ -418,27 +584,29 @@ class LineSlerpTrajectory:
 
 
 class CBFQPController:
-    """关节速度空间的纯 CBF-QP 控制器。
+    """关节速度空间 + 底座平面速度的 CBF-QP 控制器（8 自由度：底座 x/y + 6 关节）。
 
     QP 变量为:
-    - dq: 关节速度
+    - u: [v_base_x, v_base_y, dq1..dq6]，即底座平面速度与关节速度
     - slack: 每条 CBF 约束的松弛变量
 
     目标函数由三部分组成:
-    1. 末端 6D twist 跟踪误差
-    2. 向名义关节位形回拉的正则项
+    1. 末端 6D twist 跟踪误差（含底座与关节对末端的贡献）
+    2. 向名义关节位形回拉的正则项（仅关节部分）
     3. 松弛变量惩罚
 
     约束形式:
-        grad_h(q) * dq + alpha * h(q) + slack >= 0
+        grad_h * u + alpha * h(q) + slack >= 0，其中 grad_h 为 1×8 增广梯度。
     """
 
     def __init__(self, robot: JakaRobot, config: ExperimentConfig):
         self.robot = robot
         self.config = config
-        self.n = robot.dof
+        self.n = robot.total_dof  # 8
         self.m = len(robot.cbf_link_indices)
-        self.prev_solution = np.zeros(self.n + self.m, dtype=float)
+        self.use_slack = config.use_slack
+        slack_dim = self.m if self.use_slack else 0
+        self.prev_solution = np.zeros(self.n + slack_dim, dtype=float)
 
     def solve(
         self,
@@ -452,8 +620,9 @@ class CBFQPController:
         ref_ang_vel: np.ndarray,
         obstacle_center: np.ndarray,
         obstacle_radius: float,
+        obstacle_body_id: int = -1,
     ) -> tuple[np.ndarray, dict]:
-        """在当前状态下求解一次 CBF-QP，并返回 dq 命令。"""
+        """在当前状态下求解一次 CBF-QP，并返回 8 维控制命令。"""
 
         # 位置误差和姿态误差共同组成末端 6 维跟踪误差。
         # 姿态误差采用旋转向量形式，便于和角速度放到同一 3 维空间。
@@ -471,57 +640,106 @@ class CBFQPController:
             ]
         )
 
-        # dq_nom 把关节往初始位形轻微拉回，防止冗余自由度无约束漂移。
-        dq_nom = self.config.dq_nominal_gain * (self.robot.q_nominal - q)
+        # 名义控制：底座速度为零，关节向名义位形轻微回拉。
+        dq_nom = np.concatenate(
+            [
+                np.zeros(2),
+                self.config.dq_nominal_gain * (self.robot.q_nominal - q),
+            ]
+        )
 
-        J_ee = self.robot.get_ee_jacobian(q, dq)
+        J_ee = self.robot.get_augmented_ee_jacobian(q, dq)
         A_rows = []
         b_vals = []
         h_vals = []
 
-        # 对多个关键连杆点同时建立“点-球”安全函数。
-        # h > 0 表示安全，h = 0 表示刚好贴边，h < 0 表示侵入安全区。
+        # 对多个关键连杆点同时建立“点-球”安全函数（梯度为 1×8 增广行）。
+        use_mesh = self.config.use_mesh_cbf and obstacle_body_id >= 0
+
         for link_idx in self.robot.cbf_link_indices:
-            link_pos = self.robot.get_link_origin(link_idx)
-            jac_link, _ = self.robot.get_link_jacobian(link_idx, q, dq)
-            delta = link_pos - obstacle_center
-            dist = np.linalg.norm(delta)
-            if dist < 1.0e-9:
-                normal = np.array([1.0, 0.0, 0.0], dtype=float)
+            if use_mesh:
+                cp_result = self.robot.get_closest_point_to_obstacle(
+                    link_idx, obstacle_body_id,
+                )
+                if cp_result is None:
+                    continue
+                surface_pt, signed_dist, normal = cp_result
+                h_val = signed_dist - self.config.safety_margin
+                A_rows.append(
+                    self.robot.get_link_cbf_row_aug_at_point(
+                        link_idx, surface_pt, normal, q, dq,
+                    )
+                )
             else:
-                normal = delta / dist
-            h_val = dist - (obstacle_radius + self.config.safety_margin)
-            A_rows.append(normal @ jac_link)
+                link_pos = self.robot.get_link_origin(link_idx)
+                delta = link_pos - obstacle_center
+                dist = np.linalg.norm(delta)
+                if dist < 1.0e-9:
+                    normal = np.array([1.0, 0.0, 0.0], dtype=float)
+                else:
+                    normal = delta / dist
+                h_val = dist - (obstacle_radius + self.config.safety_margin)
+                A_rows.append(
+                    self.robot.get_link_cbf_row_aug(link_idx, normal, q, dq)
+                )
             b_vals.append(self.config.cbf_alpha * h_val)
             h_vals.append(h_val)
-        A = np.array(A_rows, dtype=float)
-        b = np.array(b_vals, dtype=float)
 
-        def objective(x):
-            # x = [dq, slack]，前 n 维是关节速度，后 m 维是松弛变量。
-            dq_var = x[: self.n]
-            slack_var = x[self.n :]
-            track_cost = np.sum((J_ee @ dq_var - xdot_ref) ** 2)
-            nominal_cost = self.config.nullspace_weight * np.sum((dq_var - dq_nom) ** 2)
-            slack_cost = self.config.slack_weight * np.sum(slack_var**2)
-            return track_cost + nominal_cost + slack_cost
+        if not h_vals:
+            h_vals = [1.0]
+        self.m = len(A_rows)
+        A = np.array(A_rows, dtype=float) if A_rows else np.zeros((0, self.n))
+        b = np.array(b_vals, dtype=float) if b_vals else np.zeros(0)
 
-        constraints = []
-        for row_idx in range(self.m):
-            row = A[row_idx].copy()
-            rhs = b[row_idx]
-
-            def ineq(x, row=row, rhs=rhs, row_idx=row_idx):
-                # scipy 的 SLSQP 采用 g(x) >= 0 形式。
-                dq_var = x[: self.n]
+        if self.use_slack:
+            def objective(x):
+                u_var = x[: self.n]
                 slack_var = x[self.n :]
-                return row @ dq_var + rhs + slack_var[row_idx]
+                track_cost = np.sum((J_ee @ u_var - xdot_ref) ** 2)
+                nominal_cost = self.config.nullspace_weight * np.sum((u_var - dq_nom) ** 2)
+                slack_cost = self.config.slack_weight * np.sum(slack_var**2)
+                return track_cost + nominal_cost + slack_cost
 
-            constraints.append({"type": "ineq", "fun": ineq})
+            constraints = []
+            for row_idx in range(self.m):
+                row = A[row_idx].copy()
+                rhs = b[row_idx]
 
-        bounds = [(-self.config.dq_limit, self.config.dq_limit)] * self.n + [
-            (0.0, None)
-        ] * self.m
+                def ineq(x, row=row, rhs=rhs, row_idx=row_idx):
+                    u_var = x[: self.n]
+                    slack_var = x[self.n :]
+                    return row @ u_var + rhs + slack_var[row_idx]
+
+                constraints.append({"type": "ineq", "fun": ineq})
+
+            bounds = (
+                [(-self.config.base_vel_limit, self.config.base_vel_limit)] * 2
+                + [(-self.config.dq_limit, self.config.dq_limit)] * self.robot.dof
+                + [(0.0, None)] * self.m
+            )
+        else:
+            def objective(x):
+                u_var = x[: self.n]
+                track_cost = np.sum((J_ee @ u_var - xdot_ref) ** 2)
+                nominal_cost = self.config.nullspace_weight * np.sum((u_var - dq_nom) ** 2)
+                return track_cost + nominal_cost
+
+            constraints = []
+            for row_idx in range(self.m):
+                row = A[row_idx].copy()
+                rhs = b[row_idx]
+
+                def ineq(x, row=row, rhs=rhs):
+                    u_var = x[: self.n]
+                    return row @ u_var + rhs
+
+                constraints.append({"type": "ineq", "fun": ineq})
+
+            bounds = (
+                [(-self.config.base_vel_limit, self.config.base_vel_limit)] * 2
+                + [(-self.config.dq_limit, self.config.dq_limit)] * self.robot.dof
+            )
+
         result = minimize(
             objective,
             self.prev_solution,
@@ -534,12 +752,14 @@ class CBFQPController:
         if result.success:
             solution = np.asarray(result.x, dtype=float)
             self.prev_solution = solution
-            dq_cmd = solution[: self.n]
-            slack = solution[self.n :]
+            u_cmd = solution[: self.n]
+            slack = solution[self.n :] if self.use_slack else np.zeros(self.m)
             status = "optimal"
         else:
-            # QP 失败时退回到一个温和的名义关节回拉项，避免控制完全失效。
-            dq_cmd = np.clip(dq_nom, -self.config.dq_limit, self.config.dq_limit)
+            u_nom = dq_nom.copy()
+            u_nom[:2] = np.clip(u_nom[:2], -self.config.base_vel_limit, self.config.base_vel_limit)
+            u_nom[2:] = np.clip(u_nom[2:], -self.config.dq_limit, self.config.dq_limit)
+            u_cmd = u_nom
             slack = np.full(self.m, np.nan)
             status = f"fallback:{result.message}"
 
@@ -549,7 +769,7 @@ class CBFQPController:
             "status": status,
             "tracking_error": float(np.linalg.norm(pos_err)),
         }
-        return dq_cmd, info
+        return u_cmd, info
 
 
 class AvoidanceExperiment:
@@ -560,6 +780,16 @@ class AvoidanceExperiment:
         self.scene = SimulationScene(config)
         self.robot = JakaRobot(config, self.scene)
         self.obstacle = SphereObstacle(config, self.scene)
+
+        # 禁用机器人与障碍球之间的物理碰撞响应，
+        # 避障行为完全由 CBF-QP 控制。
+        p.setCollisionFilterPair(
+            self.robot.body_id, self.obstacle.body_id, -1, -1, enableCollision=0,
+        )
+        for link_idx in range(self.robot.num_joints):
+            p.setCollisionFilterPair(
+                self.robot.body_id, self.obstacle.body_id, link_idx, -1, enableCollision=0,
+            )
 
         # 用障碍球当前位置定义参考直线。
         # 这里的直线在 x 方向穿过障碍球附近，但在 y/z 上留固定偏置，
@@ -656,8 +886,8 @@ class AvoidanceExperiment:
                     min(current_time, self.config.trajectory_duration)
                 )
 
-                # 3. 基于当前状态、参考轨迹和障碍位置求解一次 CBF-QP。
-                dq_cmd, info = self.controller.solve(
+                # 3. 基于当前状态、参考轨迹和障碍位置求解一次 CBF-QP（8 维：底座 + 关节）。
+                u_cmd, info = self.controller.solve(
                     q=q,
                     dq=dq,
                     current_pos=ee_pos,
@@ -668,10 +898,12 @@ class AvoidanceExperiment:
                     ref_ang_vel=ref_ang_vel,
                     obstacle_center=obstacle_center,
                     obstacle_radius=self.obstacle.radius,
+                    obstacle_body_id=self.obstacle.body_id,
                 )
 
-                # 4. 把关节速度命令送给 PyBullet，并推进一步仿真。
-                self.robot.command_joint_velocities(dq_cmd)
+                # 4. 拆分 8 维命令：前 2 维驱动底座平面移动，后 6 维驱动关节。
+                self.robot.move_base(u_cmd[:2], self.config.dt)
+                self.robot.command_joint_velocities(u_cmd[2:])
 
                 p.stepSimulation()
                 self._update_visuals(ee_pos, ref_pos, info)
@@ -679,6 +911,7 @@ class AvoidanceExperiment:
                 if self.sim_step % self.config.print_every == 0:
                     print(
                         f"[step {self.sim_step:4d}] "
+                        f"base=({self.robot.base_pos[0]:.3f}, {self.robot.base_pos[1]:.3f}) "
                         f"ee=({ee_pos[0]:.3f}, {ee_pos[1]:.3f}, {ee_pos[2]:.3f}) "
                         f"ref=({ref_pos[0]:.3f}, {ref_pos[1]:.3f}, {ref_pos[2]:.3f}) "
                         f"track_err={info['tracking_error'] * 1000:.1f}mm "
@@ -688,7 +921,8 @@ class AvoidanceExperiment:
                 self.sim_step += 1
                 time.sleep(self.config.dt)
 
-            # 轨迹时间结束后，不直接停机，而是继续在终点附近闭环保持。
+            # 轨迹时间结束后，底座与关节均置零，并在终点附近闭环保持。
+            self.robot.move_base(np.zeros(2), self.config.dt)
             self.robot.command_joint_velocities(np.zeros(self.robot.dof))
             print("===== 轨迹执行结束，保持窗口 (Ctrl+C 退出) =====")
             while p.isConnected():
@@ -698,7 +932,7 @@ class AvoidanceExperiment:
                 ref_pos, ref_quat, ref_lin_vel, ref_ang_vel = self.trajectory.sample(
                     self.config.trajectory_duration
                 )
-                dq_cmd, info = self.controller.solve(
+                u_cmd, info = self.controller.solve(
                     q=q,
                     dq=dq,
                     current_pos=ee_pos,
@@ -709,8 +943,10 @@ class AvoidanceExperiment:
                     ref_ang_vel=ref_ang_vel,
                     obstacle_center=obstacle_center,
                     obstacle_radius=self.obstacle.radius,
+                    obstacle_body_id=self.obstacle.body_id,
                 )
-                self.robot.command_joint_velocities(dq_cmd)
+                self.robot.move_base(u_cmd[:2], 1.0 / 60.0)
+                self.robot.command_joint_velocities(u_cmd[2:])
                 p.stepSimulation()
                 self._update_visuals(ee_pos, ref_pos, info)
                 time.sleep(1.0 / 60.0)
