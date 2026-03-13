@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="T_workpiece">
+
+  <!-- ======== 底板 (base plate) ======== -->
+  <!-- URDF 第一个 link 是 base_link，PyBullet 以此作为整体的参考原点。 -->
+  <link name="base_plate">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <!-- size="长x 宽y 厚z"，单位：米 -->
+        <box size="0.30 0.20 0.005"/>
+      </geometry>
+      <material name="steel_gray">
+        <color rgba="0.55 0.55 0.55 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.30 0.20 0.005"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- ======== 立板 (vertical plate) ======== -->
+  <link name="vertical_plate">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <!-- 立板：长x 厚y 高z -->
+        <box size="0.30 0.005 0.10"/>
+      </geometry>
+      <material name="steel_dark">
+        <color rgba="0.45 0.45 0.50 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.30 0.005 0.10"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- ======== 固定关节：立板焊接在底板正中上方 ======== -->
+  <!-- origin 定义子 link 坐标系原点相对于父 link 坐标系原点的位置。
+       这里：x=0（居中），y=0（居中），z=底板半厚+立板半高 = 0.0025+0.05 -->
+  <joint name="base_to_vertical" type="fixed">
+    <parent link="base_plate"/>
+    <child link="vertical_plate"/>
+    <origin xyz="0 0 0.0525" rpy="0 0 0"/>
+  </joint>
+
+</robot>

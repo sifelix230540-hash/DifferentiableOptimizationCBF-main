@@ -1,3 +1,23 @@
+"""3_11 版本：单障碍物的 JAKA 3D CBF-QP 避障实验。
+
+本文件是较早的实验主版本，核心目标是验证：
+1. JAKA 机械臂 + 平面移动底座（共 8 自由度）的 CBF-QP 末端跟踪与避障；
+2. 单个障碍物场景下的 PyBullet 仿真、可视化、录像与轨迹跟踪；
+3. point-based / mesh-based 两种 CBF 距离构造方式。
+
+本文件的特点：
+- 障碍物结构相对固定，主要围绕单个球形障碍物展开；
+- 控制器接口基本按“单障碍物”来组织；
+- 适合做基础控制参数调试、相机视角调试和单场景复现实验。
+
+与 `3_12_jaka_3d_cbf_qp_experiment.py` 的差异：
+- `3_12` 在本文件思路上进一步抽象出 `Obstacle` 基类；
+- `3_12` 支持 `SphereObstacle`、`PlateObstacle`、`URDFObstacle` 等多种障碍形式；
+- `3_12` 的控制器面向 `list[Obstacle]` 编程，更适合多平板焊接件、URDF 工件和后续扩展；
+- 如果你只是想看最直接、最单纯的单障碍实验流程，优先看本文件；
+- 如果你要做复杂工件导入、多个几何障碍统一管理，优先看 `3_12`。
+"""
+
 import math
 import time
 from dataclasses import dataclass

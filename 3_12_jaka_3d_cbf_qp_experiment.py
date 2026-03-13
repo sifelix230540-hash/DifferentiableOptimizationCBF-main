@@ -1,3 +1,24 @@
+"""3_12 版本：障碍物抽象化后的 JAKA 3D CBF-QP 避障实验。
+
+本文件是在 `3_11_jaka_3d_cbf_qp_experiment.py` 基础上的扩展版本，
+重点不是改机器人本体，而是把“障碍物”从单一实验对象升级为可扩展的类体系。
+
+本文件新增/强化的内容：
+1. 引入 `Obstacle` 抽象基类，统一障碍物接口；
+2. 已支持 `SphereObstacle`、`PlateObstacle`、`URDFObstacle`；
+3. 控制器不再面向单个障碍物，而是面向 `list[Obstacle]`；
+4. 适合导入由多个平板组成的焊接件，尤其是 URDF 形式的工件；
+5. 更适合后续继续加圆柱、胶囊体、复杂工装夹具等新障碍类型。
+
+与 `3_11_jaka_3d_cbf_qp_experiment.py` 的差异：
+- `3_11` 更偏“单场景实验脚本”，结构直接，便于快速验证；
+- `3_12` 更偏“障碍物框架版本”，结构更抽象，便于扩展和复用；
+- `3_11` 主要适合单球/单障碍调参；
+- `3_12` 主要适合多平板焊接件、URDF 工件、统一障碍物管理。
+
+如果你的目标是把真实焊接件导入 PyBullet 并纳入 CBF 约束，建议以本文件为主继续开发。
+"""
+
 import math
 import time
 from abc import ABC, abstractmethod
@@ -56,8 +77,8 @@ class ExperimentConfig:
     hold_duration: float = 6
 
     # ---- 障碍物选择 ----
-    # "sphere" / "plate"，决定使用哪个子类。
-    obstacle_type: str = "plate"
+    # "sphere" / "plate" / "urdf"，决定使用哪个子类。
+    obstacle_type: str = "urdf"
 
     # 球障碍参数。
     sphere_radius: float = 0.06
@@ -67,7 +88,12 @@ class ExperimentConfig:
     # 平板障碍参数。
     plate_half_extents: tuple[float, float, float] = (0.12, 0.08, 0.004)
     plate_rgba: tuple[float, float, float, float] = (0.30, 0.55, 0.85, 0.80)
-    plate_initial_offset: tuple[float, float, float] = (0.32, 0.4, 0.25)
+    plate_initial_offset: tuple[float, float, float] = (0.3, 0.4, 0.2)
+
+    # URDF 工件障碍参数。
+    workpiece_urdf_path: str = "workpiece_T.urdf"
+    workpiece_position: tuple[float, float, float] = (0.30, 0.35, 0.0)
+    workpiece_orientation_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     # 障碍物通用滑块范围。
     obstacle_slider_y_min: float = -0.30
@@ -85,17 +111,18 @@ class ExperimentConfig:
 
     # QP / CBF。
     position_gain: float = 8
-    orientation_gain: float = 0
-    nullspace_weight: float = 0.1
+    orientation_gain: float = 0.5
+    nullspace_weight: float = 0.001
     slack_weight: float = 200000.0
     use_slack: bool = False
     use_mesh_cbf: bool = True
     cbf_alpha: float = 2
     safety_margin: float = 0.02
+    # q_nominal 指数平滑跟踪率。
+    q_nominal_tracking: float = 0.02
 
     print_every: int = 120
     reference_samples: int = 80
-
 
 # ============================================================================
 #  仿真场景
@@ -515,12 +542,99 @@ class PlateObstacle(Obstacle):
         return float(signed_dist), normal_world
 
 
+class URDFObstacle(Obstacle):
+    """从 URDF 文件加载的多板件工件障碍物。
+
+    典型用途：焊接件由多块板焊接而成，每块板在 URDF 中是一个 link，
+    板间用 fixed joint 连接。PyBullet 的 getClosestPoints 会自动遍历
+    工件所有 link 与机器人各 link 之间的最近距离，天然适配 CBF。
+    """
+
+    _PROBE_RADIUS = 0.001
+
+    def __init__(self, config: ExperimentConfig, scene: SimulationScene):
+        self.config = config
+        pos = list(config.workpiece_position)
+        pos[2] += scene.table_height
+        orn = p.getQuaternionFromEuler(
+            [math.radians(v) for v in config.workpiece_orientation_deg])
+
+        self._body_id = p.loadURDF(
+            config.workpiece_urdf_path,
+            basePosition=pos,
+            baseOrientation=orn,
+            useFixedBase=True,
+        )
+        self._num_links = p.getNumJoints(self._body_id)
+        self._pos = np.array(pos, dtype=float)
+
+        # 创建一个极小的不可见辅助球，用于 compute_distance 中
+        # 通过 getClosestPoints 查询任意点到工件的精确距离。
+        probe_col = p.createCollisionShape(p.GEOM_SPHERE, radius=self._PROBE_RADIUS)
+        self._probe_id = p.createMultiBody(
+            baseMass=0, baseCollisionShapeIndex=probe_col,
+            baseVisualShapeIndex=-1, basePosition=[0, 0, -10])
+        # 辅助球不参与任何物理碰撞
+        p.setCollisionFilterPair(self._probe_id, self._body_id, -1, -1, enableCollision=0)
+
+        link_names = ["base"]
+        for i in range(self._num_links):
+            info = p.getJointInfo(self._body_id, i)
+            link_names.append(info[12].decode("utf-8"))
+        print(f"工件已加载: {config.workpiece_urdf_path}")
+        print(f"  link 数量: {self._num_links + 1} ({', '.join(link_names)})")
+
+        th = scene.table_height
+        self.sliders = {
+            "x": p.addUserDebugParameter("wp_x", -0.20, 0.60, float(self._pos[0])),
+            "y": p.addUserDebugParameter("wp_y", config.obstacle_slider_y_min,
+                                         config.obstacle_slider_y_max, float(self._pos[1])),
+            "z": p.addUserDebugParameter("wp_z", th, th + 0.40, float(self._pos[2])),
+        }
+
+    @property
+    def body_id(self) -> int:
+        return self._body_id
+
+    def update_from_slider(self) -> np.ndarray:
+        pos = np.array([p.readUserDebugParameter(self.sliders[k]) for k in ("x", "y", "z")])
+        orn = p.getQuaternionFromEuler(
+            [math.radians(v) for v in self.config.workpiece_orientation_deg])
+        p.resetBasePositionAndOrientation(self._body_id, pos.tolist(), orn)
+        self._pos = pos
+        return pos
+
+    def get_position(self) -> np.ndarray:
+        return np.array(p.getBasePositionAndOrientation(self._body_id)[0], dtype=float)
+
+    def compute_distance(self, point: np.ndarray) -> tuple[float, np.ndarray]:
+        """将辅助探针球移到查询点，用 getClosestPoints 精确查询
+        到工件各 link 碰撞体的最短距离，对任意 URDF 几何体通用。
+        """
+        p.resetBasePositionAndOrientation(
+            self._probe_id, point.tolist(), [0, 0, 0, 1])
+
+        contacts = p.getClosestPoints(self._probe_id, self._body_id, 2.0)
+        if not contacts:
+            return 1.0, np.array([1.0, 0.0, 0.0])
+
+        best = min(contacts, key=lambda c: c[8])
+        raw_dist = float(best[8])
+        signed_dist = raw_dist - self._PROBE_RADIUS
+        n = np.array(best[7], dtype=float)
+        nl = np.linalg.norm(n)
+        normal = n / nl if nl > 1e-9 else np.array([1.0, 0.0, 0.0])
+        return signed_dist, normal
+
+
 def create_obstacle(config: ExperimentConfig, scene: SimulationScene) -> Obstacle:
     """工厂函数：根据 config.obstacle_type 创建对应子类。"""
     if config.obstacle_type == "sphere":
         return SphereObstacle(config, scene)
     elif config.obstacle_type == "plate":
         return PlateObstacle(config, scene)
+    elif config.obstacle_type == "urdf":
+        return URDFObstacle(config, scene)
     else:
         raise ValueError(f"未知障碍物类型: {config.obstacle_type}")
 
@@ -574,8 +688,6 @@ class CBFQPController:
         self.n = robot.total_dof
         self.m = len(robot.cbf_link_indices)
         self.use_slack = config.use_slack
-        slack_dim = self.m if self.use_slack else 0
-        self.prev_solution = np.zeros(self.n + slack_dim, dtype=float)
 
     def solve(
         self,
@@ -660,18 +772,23 @@ class CBFQPController:
             bounds = ([(-self.config.base_vel_limit, self.config.base_vel_limit)] * 2
                       + [(-self.config.dq_limit, self.config.dq_limit)] * self.robot.dof)
 
-        # 初始猜测维度与 bounds 一致
-        x0_len = len(bounds)
-        if len(self.prev_solution) != x0_len:
-            self.prev_solution = np.zeros(x0_len, dtype=float)
+        # 用伪逆解做初始猜测：不考虑约束时的最优跟踪速度。
+        # 这保证 SLSQP 从"积极跟踪"出发搜索，而非从近零速出发。
+        u_pinv = np.linalg.lstsq(J_ee, xdot_ref, rcond=None)[0]
+        lb = np.array([b[0] for b in bounds[:self.n]])
+        ub = np.array([b[1] for b in bounds[:self.n]])
+        u_pinv = np.clip(u_pinv, lb, ub)
+        if self.use_slack:
+            x0 = np.concatenate([u_pinv, np.zeros(self.m)])
+        else:
+            x0 = u_pinv
 
-        result = minimize(objective, self.prev_solution, method="SLSQP",
+        result = minimize(objective, x0, method="SLSQP",
                           bounds=bounds, constraints=constraints,
                           options={"maxiter": 100, "ftol": 1e-6, "disp": False})
 
         if result.success:
             sol = np.asarray(result.x, dtype=float)
-            self.prev_solution = sol
             u_cmd = sol[:self.n]
             slack = sol[self.n:] if self.use_slack else np.zeros(self.m)
             status = "optimal"
@@ -775,6 +892,10 @@ class AvoidanceExperiment:
                 ref = self.trajectory.sample(min(t, self.config.trajectory_duration))
 
                 u_cmd, info = self._solve_step(q, dq, ee_pos, ee_quat, *ref)
+
+                alpha_q = self.config.q_nominal_tracking
+                self.robot.q_nominal = (1 - alpha_q) * self.robot.q_nominal + alpha_q * q
+
                 self.robot.move_base(u_cmd[:2], self.config.dt)
                 self.robot.command_joint_velocities(u_cmd[2:])
 
