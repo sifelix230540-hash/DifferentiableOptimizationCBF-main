@@ -1,9 +1,10 @@
-"""3_14 版本：9 自由度龙门吊 + 倒挂机械臂。
+"""3_14 版本：9 自由度龙门吊 + 倒挂机械臂 (URDF 一体化)。
 
 与 3_13 的差异：
-1. 底盘从 2-DOF 移动底座改为 3-DOF 龙门吊 (X/Y/Z 平移)；
-2. 机械臂倒挂安装，底座接在龙门吊第三轴末端平台下方；
-3. 总自由度 = 3 (龙门吊) + 6 (机械臂) = 9。
+1. 使用 9_axis URDF，内含 3 个移动副 (龙门吊 X/Y/Z) + 6 个转动副 (机械臂)；
+2. 机械臂倒挂安装，底座通过 fixed joint 接在第三轴末端平台下方；
+3. 所有 9 个自由度均通过 PyBullet 关节电机控制，无需手动移动 base；
+4. Jacobian 由 PyBullet 直接计算 (6×9)，无需手动拼接增广矩阵。
 
 MPC-DCBF 数学模型
 ─────────────────
@@ -45,18 +46,17 @@ except ImportError:
 class ExperimentConfig:
 
     urdf_path: str = (
-        r"C:\Users\12049\OneDrive\Desktop\Zu 7.SLDASM\urdf\Zu 7.SLDASM.urdf"
+        r"C:\Users\12049\OneDrive\Desktop\科研相关\博一春季\免示教焊接轨迹规划"
+        r"\相关资料\CBF_grad_optim_on_trajPlanning"
+        r"\DifferentiableOptimizationCBF-main\9_axis\urdf\9_axis.urdf"
     )
     dt: float = 1.0 / 240.0
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
 
-    # ---- 龙门吊参数 ----
-    gantry_initial_pos: tuple[float, float, float] = (0.0, 0.0, 1.2)
-    gantry_platform_half: tuple[float, float, float] = (0.15, 0.15, 0.015)
-    gantry_rail_height: float = 1.5          # 龙门吊横梁高度
-    gantry_pillar_half: tuple[float, float, float] = (0.03, 0.03, 0.75)
-    gantry_span_x: float = 0.8              # 两排立柱 X 方向间距
-    gantry_span_y: float = 0.8              # 两排立柱 Y 方向间距
+    # ---- 龙门吊初始关节位置 [pris01, pris02, pris03] ----
+    # pris01 沿 +X, pris02 沿 -Y, pris03 沿 -Z
+    # 零位时末端在 [-8.4, -1.6, -3.5]，需通过 gantry_q 补偿到目标区域
+    gantry_initial_q: tuple[float, float, float] = (8.554, -1.870, -3.936)
 
     camera_distance: float = 1.8
     camera_yaw: float = -225.0
@@ -124,7 +124,7 @@ class ExperimentConfig:
 
 
 # ============================================================================
-#  仿真场景 — 龙门吊
+#  仿真场景
 # ============================================================================
 
 class SimulationScene:
@@ -145,7 +145,6 @@ class SimulationScene:
         p.resetDebugVisualizerCamera(
             cameraDistance=config.camera_distance, cameraYaw=config.camera_yaw,
             cameraPitch=config.camera_pitch, cameraTargetPosition=config.camera_target)
-        self.gantry_parts: list[tuple[int, np.ndarray, tuple]] = []
         self.reference_height = self._build_environment()
         self._draw_axes()
         self.status_text_id = None
@@ -153,51 +152,7 @@ class SimulationScene:
     def _build_environment(self) -> float:
         plane_id = p.loadURDF("plane.urdf")
         p.changeVisualShape(plane_id, -1, rgbaColor=[0.6, 0.6, 0.6, 1.0])
-
-        cfg = self.config
-        rh = cfg.gantry_rail_height
-        ph = cfg.gantry_pillar_half
-        sx, sy = cfg.gantry_span_x / 2, cfg.gantry_span_y / 2
-
-        # 四根立柱
-        pillar_vis = p.createVisualShape(
-            p.GEOM_BOX, halfExtents=list(ph),
-            rgbaColor=[0.35, 0.35, 0.38, 1], specularColor=[0.3]*3)
-        for cx, cy in [(-sx, -sy), (-sx, sy), (sx, -sy), (sx, sy)]:
-            p.createMultiBody(baseMass=0, baseCollisionShapeIndex=-1,
-                              baseVisualShapeIndex=pillar_vis,
-                              basePosition=[cx, cy, ph[2]])
-
-        # 顶部横梁 (X 方向两根)
-        beam_hx = cfg.gantry_span_x / 2 + ph[0]
-        beam_vis = p.createVisualShape(
-            p.GEOM_BOX, halfExtents=[beam_hx, ph[1], ph[1]],
-            rgbaColor=[0.45, 0.45, 0.48, 1], specularColor=[0.3]*3)
-        for cy in [-sy, sy]:
-            p.createMultiBody(baseMass=0, baseCollisionShapeIndex=-1,
-                              baseVisualShapeIndex=beam_vis,
-                              basePosition=[0, cy, rh])
-
-        # 龙门吊移动平台 (跟随机器人运动)
-        plat_h = cfg.gantry_platform_half
-        plat_vis = p.createVisualShape(
-            p.GEOM_BOX, halfExtents=list(plat_h),
-            rgbaColor=[0.82, 0.84, 0.88, 1], specularColor=[0.5]*3)
-        gx, gy, gz = cfg.gantry_initial_pos
-        plat_id = p.createMultiBody(
-            baseMass=0, baseCollisionShapeIndex=-1,
-            baseVisualShapeIndex=plat_vis,
-            basePosition=[gx, gy, gz])
-        self.gantry_parts.append(
-            (plat_id, np.array([0, 0, 0], dtype=float), (0, 0, 0, 1)))
-
-        return 0.0  # 地面参考高度
-
-    def update_gantry_pose(self, gantry_xyz):
-        pos = np.asarray(gantry_xyz, dtype=float).flatten()[:3]
-        for bid, offset, lq in self.gantry_parts:
-            p.resetBasePositionAndOrientation(
-                bid, (pos + offset).tolist(), lq)
+        return 0.0
 
     def _draw_axes(self):
         al = 0.12; o = [0, 0, self.reference_height+0.001]
@@ -225,54 +180,112 @@ class SimulationScene:
         _, _, rgb, _, _ = p.getCameraImage(w, h)
         return np.array(rgb, dtype=np.uint8).reshape(h, w, 4)[:, :, :3]
 
+import os as _os
+import shutil as _shutil
+import tempfile as _tempfile
+
+
+def _prepare_urdf(urdf_path: str) -> tuple[str, str]:
+    """PyBullet 不支持中文路径，必要时复制到临时目录。
+
+    返回 (可用的 urdf 路径, package 搜索根目录)。
+    """
+    pkg_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(urdf_path)))
+    try:
+        pkg_dir.encode("ascii")
+        return _os.path.abspath(urdf_path), pkg_dir
+    except UnicodeEncodeError:
+        pass
+
+    pkg_name = _os.path.basename(pkg_dir)
+    urdf_rel = _os.path.relpath(_os.path.abspath(urdf_path), pkg_dir)
+    tmp_root = _os.path.join(_tempfile.gettempdir(), "pybullet_urdf")
+    tmp_pkg = _os.path.join(tmp_root, pkg_name)
+    if _os.path.exists(tmp_pkg):
+        _shutil.rmtree(tmp_pkg, ignore_errors=True)
+    if _os.path.exists(tmp_pkg):
+        _shutil.copytree(pkg_dir, tmp_pkg, dirs_exist_ok=True)
+    else:
+        _shutil.copytree(pkg_dir, tmp_pkg)
+    new_urdf = _os.path.join(tmp_pkg, urdf_rel)
+    print(f"[info] URDF 已复制到临时目录: {tmp_pkg}")
+    return new_urdf, tmp_root
+
 
 # ============================================================================
-#  机器人 — 龙门吊 3-DOF + 倒挂 6-DOF 机械臂 = 9-DOF
+#  机器人 — 9-DOF (3 移动副 + 6 转动副，全部由 URDF 关节驱动)
 # ============================================================================
 
 class JakaRobot:
 
-    INVERTED_QUAT = tuple(p.getQuaternionFromEuler([math.pi, 0, 0]))
-
     def __init__(self, config: ExperimentConfig, scene: SimulationScene):
         self.config = config
         self.scene = scene
-        gx, gy, gz = config.gantry_initial_pos
+
+        urdf_path, search_root = _prepare_urdf(config.urdf_path)
+        p.setAdditionalSearchPath(search_root)
+
         self.body_id = p.loadURDF(
-            config.urdf_path,
-            basePosition=[gx, gy, gz],
-            baseOrientation=self.INVERTED_QUAT,
+            urdf_path,
+            basePosition=[0, 0, 0],
+            baseOrientation=[0, 0, 0, 1],
             useFixedBase=True,
             flags=p.URDF_USE_MATERIAL_COLORS_FROM_MTL)
-        self._set_link_colors()
+
         self.num_joints = p.getNumJoints(self.body_id)
-        self.active_joints = [i for i in range(self.num_joints)
-                              if p.getJointInfo(self.body_id, i)[2] == p.JOINT_REVOLUTE]
-        self.dof = len(self.active_joints)
-        self.ee_link_index = self.active_joints[-1]
-        self.cbf_link_indices = list(self.active_joints)
-        self.base_pos = np.array([gx, gy, gz], dtype=float)
-        self.total_dof = 3 + self.dof  # 9
+
+        # 收集所有可动关节 (prismatic + revolute)
+        self.active_joints = []
+        self.prismatic_joints = []
+        self.revolute_joints = []
+        for i in range(self.num_joints):
+            jinfo = p.getJointInfo(self.body_id, i)
+            jtype = jinfo[2]
+            if jtype == p.JOINT_PRISMATIC:
+                self.active_joints.append(i)
+                self.prismatic_joints.append(i)
+            elif jtype == p.JOINT_REVOLUTE:
+                self.active_joints.append(i)
+                self.revolute_joints.append(i)
+
+        self.n_pris = len(self.prismatic_joints)   # 3
+        self.n_revo = len(self.revolute_joints)     # 6
+        self.dof = len(self.active_joints)          # 9
+        self.total_dof = self.dof
+        self.ee_link_index = self.revolute_joints[-1]
+        self.cbf_link_indices = list(self.revolute_joints)  # CBF 只检查臂杆
+
+        # 初始化关节
         for ji in self.active_joints:
             p.changeDynamics(self.body_id, ji, linearDamping=0, angularDamping=0)
             p.setJointMotorControl2(self.body_id, ji, p.VELOCITY_CONTROL, force=0)
+
+        # 从 URDF 读取关节限位 (IK 用)
+        # PyBullet calculateInverseKinematics 要求 limits 长度 == getNumJoints()
+        # 必须遍历所有关节（含 FIXED），对 FIXED joint 填占位值
+        self._ik_lower, self._ik_upper = [], []
+        self._ik_ranges, self._ik_rest = [], []
+        for ji in range(self.num_joints):
+            info = p.getJointInfo(self.body_id, ji)
+            lo, hi = float(info[8]), float(info[9])
+            if hi < lo:
+                # FIXED joint (PyBullet 用 lo=0,hi=-1 表示无约束)，填占位 0
+                self._ik_lower.append(0.0)
+                self._ik_upper.append(0.0)
+                self._ik_ranges.append(0.0)
+            else:
+                self._ik_lower.append(lo)
+                self._ik_upper.append(hi)
+                self._ik_ranges.append(hi - lo if hi > lo else 12.56)
+            self._ik_rest.append(0.0)
+
+        # 设置龙门吊初始位置，并写入 rest poses
+        for k, ji in enumerate(self.prismatic_joints):
+            if k < len(config.gantry_initial_q):
+                p.resetJointState(self.body_id, ji, config.gantry_initial_q[k])
+                self._ik_rest[ji] = config.gantry_initial_q[k]  # ji 即关节 index，与 _ik_rest 下标对齐
+
         self.q_nominal = np.zeros(self.dof)
-
-    def move_base(self, v_gantry, dt):
-        """移动龙门吊 3 轴 (x, y, z)。"""
-        v = np.clip(np.asarray(v_gantry, dtype=float).flatten()[:3],
-                     -self.config.base_vel_limit, self.config.base_vel_limit)
-        self.base_pos += v * dt
-        p.resetBasePositionAndOrientation(
-            self.body_id,
-            self.base_pos.tolist(),
-            self.INVERTED_QUAT)
-        self.scene.update_gantry_pose(self.base_pos)
-
-    def _set_link_colors(self):
-        for li, rgba in {-1:[.15]*3+[1], 0:[.92]*3+[1], 1:[.12,.46,.70,1],
-                          2:[.92]*3+[1], 3:[.12,.46,.70,1], 4:[.92]*3+[1], 5:[.15]*3+[1]}.items():
-            p.changeVisualShape(self.body_id, li, rgbaColor=rgba, specularColor=[.6]*3)
 
     def get_joint_state(self):
         st = p.getJointStates(self.body_id, self.active_joints)
@@ -287,11 +300,53 @@ class JakaRobot:
         return np.array(s[4], dtype=float)
 
     def calculate_ik(self, tpos, tquat):
+        # #region agent log
+        import json as _json, time as _time
+        _log_path = r"c:\Users\12049\OneDrive\Desktop\科研相关\博一春季\免示教焊接轨迹规划\相关资料\CBF_grad_optim_on_trajPlanning\DifferentiableOptimizationCBF-main\debug-f4cde7.log"
+        def _dbg(msg, data, hid):
+            with open(_log_path, "a", encoding="utf-8") as _f:
+                _f.write(_json.dumps({"sessionId":"f4cde7","timestamp":int(_time.time()*1000),"location":"3_14_jaka:calculate_ik","message":msg,"hypothesisId":hid,"data":data})+"\n")
+        _dbg("IK input", {"tpos": list(tpos), "tquat": list(tquat), "ee_link_index": self.ee_link_index, "dof": self.dof}, "C_D")
+        _dbg("IK limits", {"lower": self._ik_lower, "upper": self._ik_upper, "ranges": self._ik_ranges, "rest": self._ik_rest, "len_lower": len(self._ik_lower), "len_upper": len(self._ik_upper), "runId": "post-fix"}, "B_E")
+        # 获取当前 ee link 的实际位置（正运动学），验证 ee_link_index 是否正确
+        try:
+            ls = p.getLinkState(self.body_id, self.ee_link_index, computeForwardKinematics=True)
+            _dbg("FK ee pos", {"ee_world_pos": list(ls[4]), "ee_world_orn": list(ls[5]), "num_joints": self.num_joints, "body_id": self.body_id}, "H_C")
+        except Exception as _e:
+            _dbg("FK ee FAILED", {"err": str(_e)}, "H_C")
+        # 测试 ee_link_index-1 能否 IK（排除末端 link 偏移问题）
+        try:
+            a_prev = p.calculateInverseKinematics(
+                self.body_id, self.ee_link_index - 1, tpos,
+                maxNumIterations=500, residualThreshold=1e-4)
+            _dbg("IK ee-1 pos-only result", {"vals": list(a_prev)}, "H")
+        except Exception as _e:
+            _dbg("IK ee-1 pos-only FAILED", {"err": str(_e)}, "H")
+        # 假设 I: 先用无限位 IK 测试位置/姿态是否本身可解
+        try:
+            a_nolimit = p.calculateInverseKinematics(
+                self.body_id, self.ee_link_index, tpos, tquat,
+                maxNumIterations=500, residualThreshold=1e-4)
+            _dbg("IK no-limit result", {"len": len(a_nolimit), "vals": list(a_nolimit), "hyp": "I_F_G"}, "I")
+        except Exception as _e:
+            _dbg("IK no-limit FAILED", {"err": str(_e)}, "I_F_G")
+        # 假设 F: 只传位置（不传姿态），测试位置本身是否可达
+        try:
+            a_posonly = p.calculateInverseKinematics(
+                self.body_id, self.ee_link_index, tpos,
+                maxNumIterations=500, residualThreshold=1e-4)
+            _dbg("IK pos-only result", {"len": len(a_posonly), "vals": list(a_posonly)}, "F_G")
+        except Exception as _e:
+            _dbg("IK pos-only FAILED", {"err": str(_e)}, "F_G")
+        # #endregion agent log
         a = p.calculateInverseKinematics(
             self.body_id, self.ee_link_index, tpos, tquat,
-            lowerLimits=[-6.28]*self.dof, upperLimits=[6.28]*self.dof,
-            jointRanges=[12.56]*self.dof, restPoses=[0.0]*self.dof,
+            lowerLimits=self._ik_lower, upperLimits=self._ik_upper,
+            jointRanges=self._ik_ranges, restPoses=self._ik_rest,
             maxNumIterations=200, residualThreshold=1e-6)
+        # #region agent log
+        _dbg("IK with-limit result", {"len": len(a), "vals": list(a)}, "B_E")
+        # #endregion agent log
         return np.array(a[:self.dof], dtype=float)
 
     def reset_to_pose(self, tpos, tquat):
@@ -306,14 +361,14 @@ class JakaRobot:
                                       q.tolist(), dq.tolist(), z.tolist())
         return np.array(jt, dtype=float), np.array(jr, dtype=float)
 
-    def get_augmented_ee_jacobian(self, q, dq):
+    def get_ee_jacobian(self, q, dq):
+        """返回 6×dof 的末端 Jacobian (PyBullet 已包含所有关节列)。"""
         jt, jr = self.get_link_jacobian(self.ee_link_index, q, dq)
-        base = np.vstack([np.eye(3, dtype=float), np.zeros((3, 3))])
-        return np.hstack([base, np.vstack([jt, jr])])
+        return np.vstack([jt, jr])
 
-    def get_link_cbf_row_aug(self, li, normal, q, dq):
+    def get_link_cbf_row(self, li, normal, q, dq):
         jt, _ = self.get_link_jacobian(li, q, dq)
-        return np.concatenate([normal[:3], normal @ jt])
+        return normal @ jt  # dof 维向量
 
     def get_closest_point_to_obstacle(self, li, obs_bid, max_dist=1.0):
         contacts = p.getClosestPoints(self.body_id, obs_bid, max_dist, linkIndexA=li)
@@ -326,7 +381,7 @@ class JakaRobot:
         nl = np.linalg.norm(n)
         return pos, d, (n/nl if nl > 1e-9 else np.array([1, 0, 0], dtype=float))
 
-    def get_link_cbf_row_aug_at_point(self, li, wpt, normal, q, dq):
+    def get_link_cbf_row_at_point(self, li, wpt, normal, q, dq):
         ls = p.getLinkState(self.body_id, li, computeForwardKinematics=True)
         ip, io = p.invertTransform(ls[4], ls[5])
         lp, _ = p.multiplyTransforms(ip, io, wpt.tolist(), [0, 0, 0, 1])
@@ -334,13 +389,23 @@ class JakaRobot:
         jt, _ = p.calculateJacobian(self.body_id, li, list(lp),
                                      q.tolist(), dq.tolist(), z.tolist())
         jt = np.array(jt, dtype=float)
-        return np.concatenate([normal[:3], normal @ jt])
+        return normal @ jt  # dof 维向量
 
-    def command_joint_velocities(self, dq_cmd):
-        dq_clip = np.clip(dq_cmd, -self.config.dq_limit, self.config.dq_limit)
-        p.setJointMotorControlArray(self.body_id, self.active_joints, p.VELOCITY_CONTROL,
-                                    targetVelocities=dq_clip.tolist(),
-                                    forces=[self.config.ee_force_limit]*self.dof)
+    def command_velocities(self, u_cmd):
+        """控制全部 9 个关节速度 (前 3 移动副 + 后 6 转动副)。"""
+        lb = np.concatenate([np.full(self.n_pris, -self.config.base_vel_limit),
+                             np.full(self.n_revo, -self.config.dq_limit)])
+        ub = -lb
+        u_clip = np.clip(u_cmd, lb, ub)
+        p.setJointMotorControlArray(
+            self.body_id, self.active_joints, p.VELOCITY_CONTROL,
+            targetVelocities=u_clip.tolist(),
+            forces=[self.config.ee_force_limit] * self.dof)
+
+    def get_gantry_pos(self):
+        """读取龙门吊 3 个移动副当前位置。"""
+        st = p.getJointStates(self.body_id, self.prismatic_joints)
+        return np.array([s[0] for s in st])
 
 
 # ============================================================================
@@ -482,7 +547,7 @@ class Controller(ABC):
         obstacles: list[Obstacle],
         current_time: float = 0.0,
     ) -> tuple[np.ndarray, dict]:
-        """返回 8 维控制命令 u 和诊断信息 dict。"""
+        """返回 9 维控制命令 u 和诊断信息 dict。"""
         ...
 
 
@@ -507,12 +572,12 @@ class CBFQPController(Controller):
                     if cp is None: continue
                     spt, sd, n = cp
                     h_vals.append(sd - self.config.safety_margin)
-                    A_rows.append(self.robot.get_link_cbf_row_aug_at_point(li, spt, n, q, dq))
+                    A_rows.append(self.robot.get_link_cbf_row_at_point(li, spt, n, q, dq))
                 else:
                     lp = self.robot.get_link_origin(li)
                     sd, n = obs.compute_distance(lp)
                     h_vals.append(sd - self.config.safety_margin)
-                    A_rows.append(self.robot.get_link_cbf_row_aug(li, n, q, dq))
+                    A_rows.append(self.robot.get_link_cbf_row(li, n, q, dq))
         return A_rows, h_vals
 
     def solve(self, q, dq, ee_pos, ee_quat,
@@ -523,9 +588,8 @@ class CBFQPController(Controller):
         xdot_ref = np.concatenate([
             ref_lin_vel + self.config.position_gain * pos_err,
             ref_ang_vel + self.config.orientation_gain * rot_err])
-        dq_nom = np.concatenate([np.zeros(3),
-                                  self.config.dq_nominal_gain * (self.robot.q_nominal - q)])
-        J_ee = self.robot.get_augmented_ee_jacobian(q, dq)
+        dq_nom = self.config.dq_nominal_gain * (self.robot.q_nominal - q)
+        J_ee = self.robot.get_ee_jacobian(q, dq)
         A_rows, h_vals = self._build_cbf_data(q, dq, obstacles)
         if not h_vals: h_vals = [1.0]
         m = len(A_rows)
@@ -541,8 +605,8 @@ class CBFQPController(Controller):
             r, rhs = A[ri].copy(), b[ri]
             def ineq(x, r=r, rhs=rhs): return r @ x[:self.n] + rhs
             constraints.append({"type": "ineq", "fun": ineq})
-        bounds = ([(-self.config.base_vel_limit, self.config.base_vel_limit)]*3
-                  + [(-self.config.dq_limit, self.config.dq_limit)]*self.robot.dof)
+        bounds = ([(-self.config.base_vel_limit, self.config.base_vel_limit)] * self.robot.n_pris
+                  + [(-self.config.dq_limit, self.config.dq_limit)] * self.robot.n_revo)
 
         u_pinv = np.linalg.lstsq(J_ee, xdot_ref, rcond=None)[0]
         lb = np.array([b[0] for b in bounds]); ub = np.array([b[1] for b in bounds])
@@ -576,7 +640,7 @@ class MPCDCBFController(Controller):
                  trajectory: LineSlerpTrajectory):
         self.robot = robot
         self.config = config
-        self.n = robot.total_dof  # 8
+        self.n = robot.total_dof  # 9
         self.N = config.N_mpc
         self.trajectory = trajectory
         self._prev_sol: np.ndarray | None = None
@@ -584,8 +648,8 @@ class MPCDCBFController(Controller):
         self._cached_info: dict | None = None
         self._step_count = 0
 
-        single_bnd = ([(-config.base_vel_limit, config.base_vel_limit)] * 3
-                      + [(-config.dq_limit, config.dq_limit)] * robot.dof)
+        single_bnd = ([(-config.base_vel_limit, config.base_vel_limit)] * robot.n_pris
+                      + [(-config.dq_limit, config.dq_limit)] * robot.n_revo)
         self._bounds = single_bnd * self.N
         self._lb = np.array([b[0] for b in single_bnd])
         self._ub = np.array([b[1] for b in single_bnd])
@@ -600,13 +664,13 @@ class MPCDCBFController(Controller):
                     if cp is None: continue
                     spt, sd, normal = cp
                     h_vals.append(sd - self.config.safety_margin)
-                    grad_rows.append(self.robot.get_link_cbf_row_aug_at_point(
+                    grad_rows.append(self.robot.get_link_cbf_row_at_point(
                         li, spt, normal, q, dq))
                 else:
                     lp = self.robot.get_link_origin(li)
                     sd, normal = obs.compute_distance(lp)
                     h_vals.append(sd - self.config.safety_margin)
-                    grad_rows.append(self.robot.get_link_cbf_row_aug(li, normal, q, dq))
+                    grad_rows.append(self.robot.get_link_cbf_row(li, normal, q, dq))
         return grad_rows, h_vals
 
     def _build_qp(self, ee_pos, J_pos, ref_positions, grad_rows, h_vals):
@@ -667,7 +731,7 @@ class MPCDCBFController(Controller):
         n, N = self.n, self.N
         cfg = self.config
 
-        J_full = self.robot.get_augmented_ee_jacobian(q, dq)
+        J_full = self.robot.get_ee_jacobian(q, dq)
         J_pos = J_full[:3]
 
         ref_positions = []
@@ -762,6 +826,12 @@ class AvoidanceExperiment:
                              obs_center[2]+config.line_bias_z])
         sq = p.getQuaternionFromEuler([math.radians(v) for v in config.start_euler_deg])
         gq = p.getQuaternionFromEuler([math.radians(v) for v in config.goal_euler_deg])
+        # #region agent log
+        import json as _json2, time as _time2
+        _log_path2 = r"c:\Users\12049\OneDrive\Desktop\科研相关\博一春季\免示教焊接轨迹规划\相关资料\CBF_grad_optim_on_trajPlanning\DifferentiableOptimizationCBF-main\debug-f4cde7.log"
+        with open(_log_path2, "a", encoding="utf-8") as _f2:
+            _f2.write(_json2.dumps({"sessionId":"f4cde7","timestamp":int(_time2.time()*1000),"location":"3_14_jaka:AvoidanceExperiment.__init__","message":"start/goal pos","hypothesisId":"A_D","data":{"obs_center":list(obs_center),"start_pos":list(start_pos),"goal_pos":list(goal_pos),"sq":list(sq)}})+"\n")
+        # #endregion agent log
 
         self.robot.reset_to_pose(start_pos, sq)
         ee_pos, _ = self.robot.get_ee_pose()
@@ -817,8 +887,7 @@ class AvoidanceExperiment:
 
                 aq = self.config.q_nominal_tracking
                 self.robot.q_nominal = (1-aq)*self.robot.q_nominal + aq*q
-                self.robot.move_base(u_cmd[:3], self.config.dt)
-                self.robot.command_joint_velocities(u_cmd[3:])
+                self.robot.command_velocities(u_cmd)
 
                 p.stepSimulation()
                 self._update_visuals(ee_pos, ref[0], info)
@@ -826,16 +895,16 @@ class AvoidanceExperiment:
                     video_frames.append(self.scene.capture_frame(
                         self.config.video_width, self.config.video_height))
                 if self.sim_step % self.config.print_every == 0:
+                    gp = self.robot.get_gantry_pos()
                     print(f"[step {self.sim_step:4d}] "
-                          f"gantry=({self.robot.base_pos[0]:.3f},{self.robot.base_pos[1]:.3f},{self.robot.base_pos[2]:.3f}) "
+                          f"gantry=({gp[0]:.3f},{gp[1]:.3f},{gp[2]:.3f}) "
                           f"err={info['tracking_error']*1000:.1f}mm "
                           f"h={info['min_h']*1000:.1f}mm "
                           f"{info['status']}")
                 self.sim_step += 1
                 time.sleep(self.config.dt)
 
-            self.robot.move_base(np.zeros(3), self.config.dt)
-            self.robot.command_joint_velocities(np.zeros(self.robot.dof))
+            self.robot.command_velocities(np.zeros(self.robot.dof))
             if self.config.record_video and video_frames and imageio:
                 imageio.mimsave(self.config.video_output_path, video_frames, fps=self.config.video_fps)
                 print(f"录像已保存: {self.config.video_output_path}")
@@ -847,8 +916,7 @@ class AvoidanceExperiment:
                 ref = self.trajectory.sample(self.config.trajectory_duration)
                 u_cmd, info = self._solve_step(q, dq, ee_pos, ee_quat, *ref,
                                                self.config.trajectory_duration)
-                self.robot.move_base(u_cmd[:3], 1/60)
-                self.robot.command_joint_velocities(u_cmd[3:])
+                self.robot.command_velocities(u_cmd)
                 p.stepSimulation()
                 self._update_visuals(ee_pos, ref[0], info)
                 time.sleep(1/60)
