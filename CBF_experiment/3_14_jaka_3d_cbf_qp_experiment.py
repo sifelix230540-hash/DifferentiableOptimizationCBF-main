@@ -54,9 +54,9 @@ class ExperimentConfig:
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
 
     # ---- 龙门吊初始关节位置 [pris01, pris02, pris03] ----
-    # pris01 沿 +X, pris02 沿 -Y, pris03 沿 -Z
-    # 零位时末端在 [-8.4, -1.6, -3.5]，需通过 gantry_q 补偿到目标区域
-    gantry_initial_q: tuple[float, float, float] = (8.554, -1.870, -3.936)
+    # pris01 沿 +X, pris02 沿 +Y, pris03 沿 +Z
+    # 与 3_18_import 保持一致：X前移12, Y偏移-7, Z=0
+    gantry_initial_q: tuple[float, float, float] = (12.0, -7.0, 0.0)
 
     camera_distance: float = 1.8
     camera_yaw: float = -225.0
@@ -78,15 +78,15 @@ class ExperimentConfig:
     obstacle_type: str = "sphere"
     sphere_radius: float = 0.06
     sphere_rgba: tuple[float, float, float, float] = (1.0, 0.35, 0.2, 0.75)
-    sphere_initial_offset: tuple[float, float, float] = (0.15, 0.15, 0.55)
+    # 障碍物初始偏移（相对于末端位置 ee_pos 的偏移量）
+    sphere_initial_offset: tuple[float, float, float] = (0.0, -0.5, -0.2)
     plate_half_extents: tuple[float, float, float] = (0.12, 0.08, 0.004)
     plate_rgba: tuple[float, float, float, float] = (0.30, 0.55, 0.85, 0.80)
-    plate_initial_offset: tuple[float, float, float] = (0.15, 0.15, 0.45)
+    plate_initial_offset: tuple[float, float, float] = (0.0, -0.15, -0.05)
     workpiece_urdf_path: str = "workpiece_T.urdf"
     workpiece_position: tuple[float, float, float] = (0.30, 0.35, 0.0)
     workpiece_orientation_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    obstacle_slider_y_min: float = -0.30
-    obstacle_slider_y_max: float = 0.80
+    obstacle_slider_range: float = 0.5
 
     start_euler_deg: tuple[float, float, float] = (180.0, 0.0, 0.0)
     goal_euler_deg: tuple[float, float, float] = (140.0, 0, 0)
@@ -115,8 +115,8 @@ class ExperimentConfig:
     mpc_dt: float = 0.04
     gamma_dcbf: float = 0.15
     mpc_tracking_weight: float = 5
-    mpc_control_weight: float = 4
-    mpc_smooth_weight: float = 3
+    mpc_control_weight: float = 0.02
+    mpc_smooth_weight: float = 0.02
     mpc_replan_steps: int = 6
 
     print_every: int = 120
@@ -131,17 +131,18 @@ class SimulationScene:
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        self.client_id = p.connect(p.GUI)
+        self.client_id = p.connect(p.GUI, options="--width=1920 --height=1080")
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setGravity(*config.gravity)
         p.setTimeStep(config.dt)
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
         p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 1)
+        p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+        p.configureDebugVisualizer(p.COV_ENABLE_TINY_RENDERER, 0)
         p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 0)
         p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
         p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW, 0)
-        p.configureDebugVisualizer(rgbBackground=[0.82, 0.87, 0.92])
-        p.configureDebugVisualizer(lightPosition=[1.5, -1.5, 2.5])
+        p.configureDebugVisualizer(rgbBackground=[1, 1, 1])
         p.resetDebugVisualizerCamera(
             cameraDistance=config.camera_distance, cameraYaw=config.camera_yaw,
             cameraPitch=config.camera_pitch, cameraTargetPosition=config.camera_target)
@@ -151,7 +152,7 @@ class SimulationScene:
 
     def _build_environment(self) -> float:
         plane_id = p.loadURDF("plane.urdf")
-        p.changeVisualShape(plane_id, -1, rgbaColor=[0.6, 0.6, 0.6, 1.0])
+        p.changeVisualShape(plane_id, -1, rgbaColor=[0.95, 0.95, 0.95, 1.0])
         return 0.0
 
     def _draw_axes(self):
@@ -203,10 +204,11 @@ def _prepare_urdf(urdf_path: str) -> tuple[str, str]:
     tmp_pkg = _os.path.join(tmp_root, pkg_name)
     if _os.path.exists(tmp_pkg):
         _shutil.rmtree(tmp_pkg, ignore_errors=True)
-    if _os.path.exists(tmp_pkg):
-        _shutil.copytree(pkg_dir, tmp_pkg, dirs_exist_ok=True)
-    else:
-        _shutil.copytree(pkg_dir, tmp_pkg)
+        for _ in range(30):
+            if not _os.path.exists(tmp_pkg):
+                break
+            time.sleep(0.1)
+    _shutil.copytree(pkg_dir, tmp_pkg, dirs_exist_ok=True)
     new_urdf = _os.path.join(tmp_pkg, urdf_rel)
     print(f"[info] URDF 已复制到临时目录: {tmp_pkg}")
     return new_urdf, tmp_root
@@ -300,53 +302,10 @@ class JakaRobot:
         return np.array(s[4], dtype=float)
 
     def calculate_ik(self, tpos, tquat):
-        # #region agent log
-        import json as _json, time as _time
-        _log_path = r"c:\Users\12049\OneDrive\Desktop\科研相关\博一春季\免示教焊接轨迹规划\相关资料\CBF_grad_optim_on_trajPlanning\DifferentiableOptimizationCBF-main\debug-f4cde7.log"
-        def _dbg(msg, data, hid):
-            with open(_log_path, "a", encoding="utf-8") as _f:
-                _f.write(_json.dumps({"sessionId":"f4cde7","timestamp":int(_time.time()*1000),"location":"3_14_jaka:calculate_ik","message":msg,"hypothesisId":hid,"data":data})+"\n")
-        _dbg("IK input", {"tpos": list(tpos), "tquat": list(tquat), "ee_link_index": self.ee_link_index, "dof": self.dof}, "C_D")
-        _dbg("IK limits", {"lower": self._ik_lower, "upper": self._ik_upper, "ranges": self._ik_ranges, "rest": self._ik_rest, "len_lower": len(self._ik_lower), "len_upper": len(self._ik_upper), "runId": "post-fix"}, "B_E")
-        # 获取当前 ee link 的实际位置（正运动学），验证 ee_link_index 是否正确
-        try:
-            ls = p.getLinkState(self.body_id, self.ee_link_index, computeForwardKinematics=True)
-            _dbg("FK ee pos", {"ee_world_pos": list(ls[4]), "ee_world_orn": list(ls[5]), "num_joints": self.num_joints, "body_id": self.body_id}, "H_C")
-        except Exception as _e:
-            _dbg("FK ee FAILED", {"err": str(_e)}, "H_C")
-        # 测试 ee_link_index-1 能否 IK（排除末端 link 偏移问题）
-        try:
-            a_prev = p.calculateInverseKinematics(
-                self.body_id, self.ee_link_index - 1, tpos,
-                maxNumIterations=500, residualThreshold=1e-4)
-            _dbg("IK ee-1 pos-only result", {"vals": list(a_prev)}, "H")
-        except Exception as _e:
-            _dbg("IK ee-1 pos-only FAILED", {"err": str(_e)}, "H")
-        # 假设 I: 先用无限位 IK 测试位置/姿态是否本身可解
-        try:
-            a_nolimit = p.calculateInverseKinematics(
-                self.body_id, self.ee_link_index, tpos, tquat,
-                maxNumIterations=500, residualThreshold=1e-4)
-            _dbg("IK no-limit result", {"len": len(a_nolimit), "vals": list(a_nolimit), "hyp": "I_F_G"}, "I")
-        except Exception as _e:
-            _dbg("IK no-limit FAILED", {"err": str(_e)}, "I_F_G")
-        # 假设 F: 只传位置（不传姿态），测试位置本身是否可达
-        try:
-            a_posonly = p.calculateInverseKinematics(
-                self.body_id, self.ee_link_index, tpos,
-                maxNumIterations=500, residualThreshold=1e-4)
-            _dbg("IK pos-only result", {"len": len(a_posonly), "vals": list(a_posonly)}, "F_G")
-        except Exception as _e:
-            _dbg("IK pos-only FAILED", {"err": str(_e)}, "F_G")
-        # #endregion agent log
+        # 不传 limits，避免触发逆动力学（龙门架惯性张量精度问题）
         a = p.calculateInverseKinematics(
             self.body_id, self.ee_link_index, tpos, tquat,
-            lowerLimits=self._ik_lower, upperLimits=self._ik_upper,
-            jointRanges=self._ik_ranges, restPoses=self._ik_rest,
-            maxNumIterations=200, residualThreshold=1e-6)
-        # #region agent log
-        _dbg("IK with-limit result", {"len": len(a), "vals": list(a)}, "B_E")
-        # #endregion agent log
+            maxNumIterations=500, residualThreshold=1e-6)
         return np.array(a[:self.dof], dtype=float)
 
     def reset_to_pose(self, tpos, tquat):
@@ -392,15 +351,14 @@ class JakaRobot:
         return normal @ jt  # dof 维向量
 
     def command_velocities(self, u_cmd):
-        """控制全部 9 个关节速度 (前 3 移动副 + 后 6 转动副)。"""
+        """纯运动学模式：速度积分 → resetJointState，不走动力学。"""
         lb = np.concatenate([np.full(self.n_pris, -self.config.base_vel_limit),
                              np.full(self.n_revo, -self.config.dq_limit)])
-        ub = -lb
-        u_clip = np.clip(u_cmd, lb, ub)
-        p.setJointMotorControlArray(
-            self.body_id, self.active_joints, p.VELOCITY_CONTROL,
-            targetVelocities=u_clip.tolist(),
-            forces=[self.config.ee_force_limit] * self.dof)
+        u_clip = np.clip(u_cmd, lb, -lb)
+        q, _ = self.get_joint_state()
+        q_new = q + u_clip * self.config.dt
+        for i, ji in enumerate(self.active_joints):
+            p.resetJointState(self.body_id, ji, float(q_new[i]), float(u_clip[i]))
 
     def get_gantry_pos(self):
         """读取龙门吊 3 个移动副当前位置。"""
@@ -430,20 +388,19 @@ class Obstacle(ABC):
 
 
 class SphereObstacle(Obstacle):
-    def __init__(self, cfg, scene):
+    def __init__(self, cfg, scene, ee_pos):
         self._r = cfg.sphere_radius
-        x, y, z = cfg.sphere_initial_offset
-        self._init = np.array([x, y, scene.reference_height+z])
+        dx, dy, dz = cfg.sphere_initial_offset
+        self._init = np.array([ee_pos[0]+dx, ee_pos[1]+dy, ee_pos[2]+dz])
         vis = p.createVisualShape(p.GEOM_SPHERE, radius=self._r, rgbaColor=cfg.sphere_rgba)
         col = p.createCollisionShape(p.GEOM_SPHERE, radius=self._r)
         self._bid = p.createMultiBody(baseMass=0, baseCollisionShapeIndex=col,
                                       baseVisualShapeIndex=vis, basePosition=self._init.tolist())
-        th = scene.reference_height
+        sr = cfg.obstacle_slider_range
         self.sliders = {
-            "x": p.addUserDebugParameter("obs_x", -0.10, 0.60, float(self._init[0])),
-            "y": p.addUserDebugParameter("obs_y", cfg.obstacle_slider_y_min,
-                                         cfg.obstacle_slider_y_max, float(self._init[1])),
-            "z": p.addUserDebugParameter("obs_z", th+0.08, th+0.42, float(self._init[2])),
+            "x": p.addUserDebugParameter("obs_x", ee_pos[0]-sr, ee_pos[0]+sr, float(self._init[0])),
+            "y": p.addUserDebugParameter("obs_y", ee_pos[1]-sr, ee_pos[1]+sr, float(self._init[1])),
+            "z": p.addUserDebugParameter("obs_z", ee_pos[2]-sr, ee_pos[2]+sr, float(self._init[2])),
         }
     @property
     def body_id(self): return self._bid
@@ -459,21 +416,20 @@ class SphereObstacle(Obstacle):
 
 
 class PlateObstacle(Obstacle):
-    def __init__(self, cfg, scene):
+    def __init__(self, cfg, scene, ee_pos):
         self._half = np.array(cfg.plate_half_extents, dtype=float)
-        x, y, z = cfg.plate_initial_offset
-        self._init = np.array([x, y, scene.reference_height+z])
+        dx, dy, dz = cfg.plate_initial_offset
+        self._init = np.array([ee_pos[0]+dx, ee_pos[1]+dy, ee_pos[2]+dz])
         vis = p.createVisualShape(p.GEOM_BOX, halfExtents=self._half.tolist(),
                                   rgbaColor=cfg.plate_rgba, specularColor=[.5]*3)
         col = p.createCollisionShape(p.GEOM_BOX, halfExtents=self._half.tolist())
         self._bid = p.createMultiBody(baseMass=0, baseCollisionShapeIndex=col,
                                       baseVisualShapeIndex=vis, basePosition=self._init.tolist())
-        th = scene.reference_height
+        sr = cfg.obstacle_slider_range
         self.sliders = {
-            "x": p.addUserDebugParameter("plate_x", -0.10, 0.60, float(self._init[0])),
-            "y": p.addUserDebugParameter("plate_y", cfg.obstacle_slider_y_min,
-                                         cfg.obstacle_slider_y_max, float(self._init[1])),
-            "z": p.addUserDebugParameter("plate_z", th+0.08, th+0.42, float(self._init[2])),
+            "x": p.addUserDebugParameter("plate_x", ee_pos[0]-sr, ee_pos[0]+sr, float(self._init[0])),
+            "y": p.addUserDebugParameter("plate_y", ee_pos[1]-sr, ee_pos[1]+sr, float(self._init[1])),
+            "z": p.addUserDebugParameter("plate_z", ee_pos[2]-sr, ee_pos[2]+sr, float(self._init[2])),
         }
     @property
     def body_id(self): return self._bid
@@ -497,9 +453,9 @@ class PlateObstacle(Obstacle):
         return float(sd), rm @ nl
 
 
-def create_obstacle(cfg, scene):
-    if cfg.obstacle_type == "sphere": return SphereObstacle(cfg, scene)
-    elif cfg.obstacle_type == "plate": return PlateObstacle(cfg, scene)
+def create_obstacle(cfg, scene, ee_pos):
+    if cfg.obstacle_type == "sphere": return SphereObstacle(cfg, scene, ee_pos)
+    elif cfg.obstacle_type == "plate": return PlateObstacle(cfg, scene, ee_pos)
     else: raise ValueError(f"未知障碍物类型: {cfg.obstacle_type}")
 
 
@@ -813,7 +769,8 @@ class AvoidanceExperiment:
         self.scene = SimulationScene(config)
         self.robot = JakaRobot(config, self.scene)
 
-        obs = create_obstacle(config, self.scene)
+        ee_pos_init, _ = self.robot.get_ee_pose()
+        obs = create_obstacle(config, self.scene, ee_pos_init)
         obs.disable_collision_with(self.robot.body_id, self.robot.num_joints)
         self.obstacles: list[Obstacle] = [obs]
 
@@ -826,12 +783,6 @@ class AvoidanceExperiment:
                              obs_center[2]+config.line_bias_z])
         sq = p.getQuaternionFromEuler([math.radians(v) for v in config.start_euler_deg])
         gq = p.getQuaternionFromEuler([math.radians(v) for v in config.goal_euler_deg])
-        # #region agent log
-        import json as _json2, time as _time2
-        _log_path2 = r"c:\Users\12049\OneDrive\Desktop\科研相关\博一春季\免示教焊接轨迹规划\相关资料\CBF_grad_optim_on_trajPlanning\DifferentiableOptimizationCBF-main\debug-f4cde7.log"
-        with open(_log_path2, "a", encoding="utf-8") as _f2:
-            _f2.write(_json2.dumps({"sessionId":"f4cde7","timestamp":int(_time2.time()*1000),"location":"3_14_jaka:AvoidanceExperiment.__init__","message":"start/goal pos","hypothesisId":"A_D","data":{"obs_center":list(obs_center),"start_pos":list(start_pos),"goal_pos":list(goal_pos),"sq":list(sq)}})+"\n")
-        # #endregion agent log
 
         self.robot.reset_to_pose(start_pos, sq)
         ee_pos, _ = self.robot.get_ee_pose()

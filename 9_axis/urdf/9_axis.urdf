@@ -8,17 +8,17 @@
     name="base_link">
     <inertial>
       <origin
-        xyz="0 0 0.189882215868279"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <mass
-        value="139.592927487695" />
+        value="120.0" />
       <inertia
-        ixx="0.0718448286204054"
-        ixy="-0.00144581311013746"
-        ixz="-0.000450491456620577"
-        iyy="30495.9579404736"
-        iyz="-1.37561240877077E-07"
-        izz="30495.9613779575" />
+        ixx="8.0"
+        ixy="0"
+        ixz="0"
+        iyy="8.0"
+        iyz="0"
+        izz="8.0" />
     </inertial>
     <visual>
       <origin
@@ -48,17 +48,17 @@
     name="link_01">
     <inertial>
       <origin
-        xyz="-11.170896628338 7.35022646647284 3.70138836356233"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <mass
-        value="6671.43699211194" />
+        value="300.0" />
       <inertia
-        ixx="71801.1150658574"
-        ixy="-0.000275933137035324"
-        ixz="-0.0221733289672927"
-        iyy="743.223509157629"
-        iyz="0.00397707975149331"
-        izz="71976.645259892" />
+        ixx="30.0"
+        ixy="0"
+        ixz="0"
+        iyy="30.0"
+        iyz="0"
+        izz="30.0" />
     </inertial>
     <visual>
       <origin
@@ -106,17 +106,17 @@
     name="link_02">
     <inertial>
       <origin
-        xyz="-10.1182799564004 11.4807341899315 4.05525907141845"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <mass
-        value="40.148559695801" />
+        value="40.0" />
       <inertia
-        ixx="3.50908475657513"
-        ixy="-0.000572217823650541"
-        ixz="-0.00072569738282989"
-        iyy="2.39803866900882"
-        iyz="-1.15244160141528E-07"
-        izz="1.20787043727926" />
+        ixx="3.0"
+        ixy="0"
+        ixz="0"
+        iyy="3.0"
+        iyz="0"
+        izz="3.0" />
     </inertial>
     <visual>
       <origin
@@ -164,17 +164,17 @@
     name="link_03">
     <inertial>
       <origin
-        xyz="-10.0101635288307 11.2872845086796 4.31198477472196"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <mass
-        value="241.92854140384" />
+        value="80.0" />
       <inertia
-        ixx="324.34375572915"
-        ixy="-4.45378052502678E-07"
-        ixz="-8.02551938519573E-05"
-        iyy="323.367190485032"
-        iyz="2.88253358991836E-06"
-        izz="2.53813839890082" />
+        ixx="5.0"
+        ixy="0"
+        ixz="0"
+        iyy="5.0"
+        iyz="0"
+        izz="5.0" />
     </inertial>
     <visual>
       <origin
@@ -213,7 +213,7 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="0"
+      lower="-1"
       upper="5"
       effort="1000"
       velocity="1" />
@@ -618,5 +618,108 @@
       upper="6.2832"
       effort="200"
       velocity="3.14" />
+  </joint>
+  <!-- ========== Welding Gun v2 (固定在 link09 末端) ========== -->
+  <link
+    name="welding_gun_base">
+    <inertial>
+      <origin
+        xyz="0.016473 0.0010858 0.12471"
+        rpy="0 0 0" />
+      <mass
+        value="0.6969" />
+      <inertia
+        ixx="0.00031521"
+        ixy="5.9416E-05"
+        ixz="-0.00014568"
+        iyy="0.0030081"
+        iyz="-3.734E-06"
+        izz="0.0029337" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://9_axis/meshes/welding_gun_base.STL" />
+      </geometry>
+      <material
+        name="welding_gun_body">
+        <color
+          rgba="0.3 0.3 0.35 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://9_axis/meshes/welding_gun_base.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="welding_gun_mount"
+    type="fixed">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 3.14" />
+    <parent
+      link="link09" />
+    <child
+      link="welding_gun_base" />
+  </joint>
+  <link
+    name="weld_point">
+    <inertial>
+      <origin
+        xyz="-6.357E-07 -2.9447E-08 -0.053384"
+        rpy="0 0 0" />
+      <mass
+        value="0.012779" />
+      <inertia
+        ixx="4.4222E-06"
+        ixy="5.6715E-09"
+        ixz="-2.5017E-11"
+        iyy="4.4432E-06"
+        iyz="4.5845E-12"
+        izz="1.5348E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://9_axis/meshes/weld_point.STL" />
+      </geometry>
+      <material
+        name="weld_tip">
+        <color
+          rgba="1.0 0.2 0.0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://9_axis/meshes/weld_point.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fixed_point"
+    type="fixed">
+    <origin
+      xyz="-0.248445440189498 0.01790694134073 0.117582478213501"
+      rpy="-2.40735429840374 1.11493845934423 0.681057147859078" />
+    <parent
+      link="welding_gun_base" />
+    <child
+      link="weld_point" />
   </joint>
 </robot>
