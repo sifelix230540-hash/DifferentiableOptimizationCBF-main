@@ -58,12 +58,12 @@ class ExperimentConfig:
     # 与 3_18_import 保持一致：X前移12, Y偏移-7, Z=0
     gantry_initial_q: tuple[float, float, float] = (12.0, -7.0, 0.0)
 
-    camera_distance: float = 1.8
+    camera_distance: float = 0.8
     camera_yaw: float = -225.0
     camera_pitch: float = -30
     camera_target: tuple[float, float, float] = (0.15, 0.20, 0.60)
 
-    record_video: bool = False
+    record_video: bool = True
     video_output_path: str = "cbf_experiment.mp4"
     video_fps: int = 30
     video_width: int = 960
@@ -115,8 +115,8 @@ class ExperimentConfig:
     mpc_dt: float = 0.04
     gamma_dcbf: float = 0.15
     mpc_tracking_weight: float = 5
-    mpc_control_weight: float = 0.02
-    mpc_smooth_weight: float = 0.02
+    mpc_control_weight: float = 0.2
+    mpc_smooth_weight: float = 0.2
     mpc_replan_steps: int = 6
 
     print_every: int = 120
@@ -178,7 +178,15 @@ class SimulationScene:
             replaceItemUniqueId=self.status_text_id if self.status_text_id else -1)
 
     def capture_frame(self, w, h):
-        _, _, rgb, _, _ = p.getCameraImage(w, h)
+        cam = p.getDebugVisualizerCamera()
+        view_matrix = cam[2]
+        proj_matrix = cam[3]
+        _, _, rgb, _, _ = p.getCameraImage(
+            w, h,
+            viewMatrix=view_matrix,
+            projectionMatrix=proj_matrix,
+            renderer=p.ER_BULLET_HARDWARE_OPENGL,
+        )
         return np.array(rgb, dtype=np.uint8).reshape(h, w, 4)[:, :, :3]
 
 import os as _os
@@ -254,8 +262,18 @@ class JakaRobot:
         self.n_revo = len(self.revolute_joints)     # 6
         self.dof = len(self.active_joints)          # 9
         self.total_dof = self.dof
+
+        # 末端执行器：优先使用 weld_point（焊丝尖端），否则回退到最后一个转动副
         self.ee_link_index = self.revolute_joints[-1]
-        self.cbf_link_indices = list(self.revolute_joints)  # CBF 只检查臂杆
+        self.welding_gun_links = []
+        for i in range(self.num_joints):
+            link_name = p.getJointInfo(self.body_id, i)[12].decode()
+            if link_name == "weld_point":
+                self.ee_link_index = i
+            if link_name in ("welding_gun_base", "weld_point"):
+                self.welding_gun_links.append(i)
+
+        self.cbf_link_indices = list(self.revolute_joints) + self.welding_gun_links
 
         # 初始化关节
         for ji in self.active_joints:
@@ -770,6 +788,10 @@ class AvoidanceExperiment:
         self.robot = JakaRobot(config, self.scene)
 
         ee_pos_init, _ = self.robot.get_ee_pose()
+        p.resetDebugVisualizerCamera(
+            cameraDistance=config.camera_distance, cameraYaw=config.camera_yaw,
+            cameraPitch=config.camera_pitch,
+            cameraTargetPosition=ee_pos_init.tolist())
         obs = create_obstacle(config, self.scene, ee_pos_init)
         obs.disable_collision_with(self.robot.body_id, self.robot.num_joints)
         self.obstacles: list[Obstacle] = [obs]
