@@ -19,15 +19,23 @@ pip install -r requirements-lqp.txt
 ### Entry Points
 
 ```bash
-# JAKA 3D CBF-QP experiments (main active work)
-python CBF_experiment/3_11_jaka_3d_cbf_qp_experiment.py   # single obstacle
-python CBF_experiment/3_12_jaka_3d_cbf_qp_experiment.py   # multi-obstacle + URDF workpiece
-python CBF_experiment/3_13_jaka_3d_cbf_qp_experiment.py   # multi-obstacle + MPC-DCBF
+# Current JAKA 9-axis welding experiment (main active work)
+python CBF_experiment/active/3_14_jaka_3d_cbf_qp_experiment.py
+python CBF_experiment/active/3_14_staged_test.py
+
+# URDF visualization / joint-axis tools
+python CBF_experiment/tools/3_18_import.py
+python CBF_experiment/tools/axis_check.py
+
+# Older JAKA experiment history
+python CBF_experiment/history/3_11_jaka_3d_cbf_qp_experiment.py
+python CBF_experiment/history/3_12_jaka_3d_cbf_qp_experiment.py
+python CBF_experiment/history/3_13_jaka_3d_cbf_qp_experiment.py
 
 # 2D benchmarks
-python CBF_experiment/3_11_2D_CFB_QP.py
-python CBF_experiment/3_11_2D_CFB_MCP_QP.py
-python CBF_experiment/3_11_2D_CFB_MCP_QP_deg2.py
+python CBF_experiment/history/3_11_2D_CFB_QP.py
+python CBF_experiment/history/3_11_2D_CFB_MCP_QP.py
+python CBF_experiment/history/3_11_2D_CFB_MCP_QP_deg2.py
 
 # Original FR3 experiments (require Julia + DifferentiableCollisions.jl)
 python -m DifferentiableOptimizationCBF.unicycle_exp
@@ -47,9 +55,13 @@ No test suite, linter, or CI/CD pipeline exists.
 
 ### `CBF_experiment/` — Custom JAKA Experiments (Primary Development)
 
-All JAKA experiments use PyBullet simulation. File naming uses `3_XX_` date-based versioning (March 11, 12, 13).
+All JAKA experiments use PyBullet simulation.
 
-Key abstractions (in 3_12 and 3_13 versions):
+- `CBF_experiment/active/` — current 9-axis + welding-gun mainline scripts
+- `CBF_experiment/tools/` — URDF visualization and joint-axis inspection tools
+- `CBF_experiment/history/` — older March 11/12/13 experiment snapshots
+
+Key abstractions (in the current 3_14 mainline):
 - `ExperimentConfig` — dataclass holding all experiment parameters
 - `SimulationScene` — PyBullet world setup
 - `JakaRobot` — robot wrapper (FK, Jacobian via PyBullet)

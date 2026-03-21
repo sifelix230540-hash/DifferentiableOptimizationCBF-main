@@ -48,7 +48,7 @@ class ExperimentConfig:
     urdf_path: str = (
         r"C:\Users\12049\OneDrive\Desktop\科研相关\博一春季\免示教焊接轨迹规划"
         r"\相关资料\CBF_grad_optim_on_trajPlanning"
-        r"\DifferentiableOptimizationCBF-main\9_axis\urdf\9_axis.urdf"
+        r"\DifferentiableOptimizationCBF-main\assets\robots\9_axis\urdf\9_axis.urdf"
     )
     dt: float = 1.0 / 240.0
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
@@ -64,7 +64,7 @@ class ExperimentConfig:
     camera_target: tuple[float, float, float] = (0.15, 0.20, 0.60)
 
     record_video: bool = True
-    video_output_path: str = "cbf_experiment.mp4"
+    video_output_path: str = "artifacts/videos/cbf_experiment.mp4"
     video_fps: int = 30
     video_width: int = 960
     video_height: int = 720

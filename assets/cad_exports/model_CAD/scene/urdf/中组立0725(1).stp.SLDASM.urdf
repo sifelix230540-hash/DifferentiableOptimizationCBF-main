@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="中组立0725(1).stp.SLDASM">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="3 0.24563 -0.0060176"
+        rpy="0 0 0" />
+      <mass
+        value="35.686" />
+      <inertia
+        ixx="0.731"
+        ixy="1.0692E-15"
+        ixz="-1.6973E-17"
+        iyy="107.06"
+        iyz="6.7701E-18"
+        izz="107.79" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://中组立0725(1).stp.SLDASM/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.82353 0.82353 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://中组立0725(1).stp.SLDASM/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="l2">
+    <inertial>
+      <origin
+        xyz="-0.232 -2.075 -0.60601"
+        rpy="0 0 0" />
+      <mass
+        value="89.686" />
+      <inertia
+        ixx="11.598"
+        ixy="4.0644E-15"
+        ixz="-1.1069E-17"
+        iyy="269.06"
+        iyz="-2.9358E-15"
+        izz="280.65" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://中组立0725(1).stp.SLDASM/meshes/l2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.82353 0.82353 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://中组立0725(1).stp.SLDASM/meshes/l2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l2"
+    type="fixed">
+    <origin
+      xyz="3.232 3.1956 0.6"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="l2" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="l3">
+    <inertial>
+      <origin
+        xyz="-2.7837 0.77477 0.01646"
+        rpy="0 0 0" />
+      <mass
+        value="1281.9" />
+      <inertia
+        ixx="598.46"
+        ixy="1.1025E-14"
+        ixz="2.7327E-12"
+        iyy="2696.6"
+        iyz="0.25586"
+        izz="2863.2" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://中组立0725(1).stp.SLDASM/meshes/l3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.82353 0.82353 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://中组立0725(1).stp.SLDASM/meshes/l3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l3"
+    type="fixed">
+    <origin
+      xyz="2.628 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="l2" />
+    <child
+      link="l3" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>

@@ -15,7 +15,7 @@ import pybullet as p
 URDF_SRC = (
     r"C:\Users\12049\OneDrive\Desktop\科研相关\博一春季\免示教焊接轨迹规划"
     r"\相关资料\CBF_grad_optim_on_trajPlanning"
-    r"\DifferentiableOptimizationCBF-main\9_axis"
+    r"\DifferentiableOptimizationCBF-main\assets\robots\9_axis"
 )
 tmp_root = os.path.join(tempfile.gettempdir(), "pb_axchk4")
 tmp_pkg  = os.path.join(tmp_root, "9_axis")

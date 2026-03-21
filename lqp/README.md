@@ -30,7 +30,7 @@ Current project mapping:
    - implements the fixed-step PDHG-style unrolled solver
 3. `lqp/envs/two_d_tracking_env.py`
    - wraps the existing 2D mass-point task as a `gymnasium` environment
-4. existing `CBF_experiment/3_11_2D_CFB_MCP_QP_deg2.py`
+4. existing `CBF_experiment/history/3_11_2D_CFB_MCP_QP_deg2.py`
    - can switch its nominal controller backend to `learned_qp`
    - still applies `CBF-QP` as the online safety layer
 
