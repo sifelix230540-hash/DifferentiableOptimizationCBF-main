@@ -27,6 +27,11 @@ try:
 except ImportError:
     imageio = None
 
+try:
+    import pybullet_planning as pp
+except ImportError:
+    pp = None
+
 
 # ============================================================================
 #  配置
@@ -49,8 +54,9 @@ class ExperimentConfig:
     workpiece_package_name: str = "中组立0725(1).stp.SLDASM"
     workpiece_package_alias: str = "workpiece_scene"
     workpiece_position: tuple[float, float, float] = (0.30, 5.0, 0.10)
-    workpiece_orientation_deg: tuple[float, float, float] = (0.0, 0.0, -90)
+    workpiece_orientation_deg: tuple[float, float, float] = (0.0, 0.0, 0)
     disable_workpiece_collision: bool = False
+    ignore_all_collisions: bool = True
     start_link_name: str = "l2"
     goal_link_name: str = "l3"
     weld_local_direction: tuple[float, float, float] = (0.0, 1.0, -1.0)
@@ -92,7 +98,7 @@ class ExperimentConfig:
     base_vel_limit: float = 0.4
 
     position_gain: float = 8.0
-    orientation_gain: float = 0.5
+    orientation_gain: float = 3.0
     nullspace_weight: float = 0.001
     slack_weight: float = 200000.0
     use_slack: bool = False
@@ -102,18 +108,33 @@ class ExperimentConfig:
     q_nominal_tracking: float = 0.02
 
     controller_type: str = "mpc_dcbf"
-    N_mpc: int = 20
+    N_mpc: int = 5
     mpc_dt: float = 0.04
     gamma_dcbf: float = 0.15
     mpc_tracking_weight: float = 5.0
+    mpc_orientation_tracking_weight: float = 0.2
     mpc_control_weight: float = 0.2
     mpc_smooth_weight: float = 0.2
     mpc_replan_steps: int = 6
 
-    segment_switch_threshold: float = 0.03
+    segment_switch_threshold: float = 0.10
+    segment_switch_rot_threshold: float = 0.15
 
     print_every: int = 120
     reference_samples: int = 80
+
+    # ---- 名义规划：末端尖点笛卡尔空间 RRT ----
+    use_rrt_nominal_planner: bool = True
+    rrt_max_iterations: int = 2400
+    rrt_restarts: int = 2
+    rrt_smooth: int = 16
+    rrt_max_time: float = 3.0
+    rrt_cartesian_resolution: float = 0.04
+    rrt_cartesian_margin: float = 0.35
+    rrt_ik_tolerance: float = 0.05
+    rrt_resolution_prismatic: float = 0.03
+    rrt_resolution_revolute: float = 0.10
+    rrt_self_collisions: bool = True
 
 
 # ============================================================================
@@ -302,11 +323,14 @@ class JakaRobot:
         self.total_dof = self.dof
 
         self.ee_link_index = self.revolute_joints[-1]
+        self.welding_gun_base_link_index = -1
         self.welding_gun_links = []
         for joint_index in range(self.num_joints):
             link_name = p.getJointInfo(self.body_id, joint_index)[12].decode()
             if link_name == "weld_point":
                 self.ee_link_index = joint_index
+            if link_name == "welding_gun_base":
+                self.welding_gun_base_link_index = joint_index
             if link_name in ("welding_gun_base", "weld_point"):
                 self.welding_gun_links.append(joint_index)
 
@@ -342,20 +366,47 @@ class JakaRobot:
         states = p.getJointStates(self.body_id, self.active_joints)
         return np.array([s[0] for s in states]), np.array([s[1] for s in states])
 
+    def set_joint_state(self, q, dq=None):
+        q = np.array(q, dtype=float)
+        dq_vec = np.zeros_like(q) if dq is None else np.array(dq, dtype=float)
+        for i, joint_index in enumerate(self.active_joints):
+            p.resetJointState(self.body_id, joint_index, float(q[i]), float(dq_vec[i]))
+
     def get_ee_pose(self):
         state = p.getLinkState(self.body_id, self.ee_link_index, computeForwardKinematics=True)
         return np.array(state[4], dtype=float), np.array(state[5], dtype=float)
+
+    def get_ee_pose_at(self, q):
+        q_backup, dq_backup = self.get_joint_state()
+        self.set_joint_state(q)
+        pos, quat = self.get_ee_pose()
+        self.set_joint_state(q_backup, dq_backup)
+        return pos, quat
 
     def get_link_origin(self, link_index):
         state = p.getLinkState(self.body_id, link_index, computeForwardKinematics=True)
         return np.array(state[4], dtype=float)
 
-    def calculate_ik(self, target_pos, target_quat):
+    def _build_rest_poses(self, rest_poses=None):
+        rest_full = list(self._ik_rest)
+        if rest_poses is None:
+            return rest_full
+        rest_active = np.array(rest_poses, dtype=float)
+        for i, joint_index in enumerate(self.active_joints):
+            if i < len(rest_active):
+                rest_full[joint_index] = float(rest_active[i])
+        return rest_full
+
+    def calculate_ik(self, target_pos, target_quat, rest_poses=None):
         ik = p.calculateInverseKinematics(
             self.body_id,
             self.ee_link_index,
             target_pos,
             target_quat,
+            lowerLimits=self._ik_lower,
+            upperLimits=self._ik_upper,
+            jointRanges=self._ik_ranges,
+            restPoses=self._build_rest_poses(rest_poses),
             maxNumIterations=500,
             residualThreshold=1e-6,
         )
@@ -441,7 +492,7 @@ class WorkpieceModel:
             config.workpiece_urdf_path,
             package_name=config.workpiece_package_name,
             package_alias=config.workpiece_package_alias,
-            remove_collision=config.disable_workpiece_collision,
+            remove_collision=(config.disable_workpiece_collision or config.ignore_all_collisions),
         )
         p.setAdditionalSearchPath(search_root)
 
@@ -459,7 +510,7 @@ class WorkpieceModel:
             link_name = p.getJointInfo(self.body_id, joint_index)[12].decode()
             self.link_name_to_index[link_name] = joint_index
 
-        if config.disable_workpiece_collision:
+        if config.disable_workpiece_collision or config.ignore_all_collisions:
             for link_index in range(-1, p.getNumJoints(self.body_id)):
                 p.setCollisionFilterGroupMask(self.body_id, link_index, 0, 0)
 
@@ -662,6 +713,16 @@ def _project_to_plane(v: np.ndarray, normal: np.ndarray) -> np.ndarray:
     return v - float(np.dot(v, normal)) * normal
 
 
+def quaternion_error_rotvec(current_quat, target_quat) -> np.ndarray:
+    return (Rotation.from_quat(target_quat) * Rotation.from_quat(current_quat).inv()).as_rotvec()
+
+
+def pose_within_thresholds(current_pos, goal_pos, current_quat, goal_quat, pos_threshold, rot_threshold) -> bool:
+    pos_ok = np.linalg.norm(np.array(current_pos, dtype=float) - np.array(goal_pos, dtype=float)) < pos_threshold
+    rot_ok = np.linalg.norm(quaternion_error_rotvec(current_quat, goal_quat)) < rot_threshold
+    return bool(pos_ok and rot_ok)
+
+
 def build_weld_reference_quat(frame_quat, weld_local_direction, prev_quat=None):
     """构造参考姿态：仅约束工具 z 轴，滚转按连续性选择。"""
     frame_rot = Rotation.from_quat(frame_quat)
@@ -756,6 +817,296 @@ class PiecewiseLineSlerpTrajectory:
         return [seg.reference_points(n_per_segment) for seg in self.segments]
 
 
+class JointWaypointTrajectory:
+    """单段关节 RRT 路径对应的末端参考轨迹。"""
+
+    def __init__(self, waypoints_pos, waypoints_quat, duration, dt, planner_status="unknown"):
+        self.waypoints_pos = [np.array(pnt, dtype=float) for pnt in waypoints_pos]
+        self.waypoints_quat = [np.array(qt, dtype=float) for qt in waypoints_quat]
+        if len(self.waypoints_pos) == 1:
+            self.waypoints_pos.append(self.waypoints_pos[0].copy())
+            self.waypoints_quat.append(self.waypoints_quat[0].copy())
+        self.duration = float(duration)
+        self.dt = float(dt)
+        self.goal_pos = self.waypoints_pos[-1].copy()
+        self.goal_quat = self.waypoints_quat[-1].copy()
+        self.planner_status = planner_status
+
+        seg_len = []
+        for idx in range(len(self.waypoints_pos) - 1):
+            seg_len.append(float(np.linalg.norm(self.waypoints_pos[idx + 1] - self.waypoints_pos[idx])))
+        self._seg_len = np.array(seg_len, dtype=float)
+        total_len = float(np.sum(self._seg_len))
+        if total_len < 1e-9:
+            self._seg_time = np.full(len(self._seg_len), self.duration / max(len(self._seg_len), 1), dtype=float)
+        else:
+            self._seg_time = self.duration * self._seg_len / total_len
+        self._cum_time = np.cumsum(self._seg_time) if len(self._seg_time) > 0 else np.array([self.duration])
+
+    def _sample_pose(self, tau):
+        if len(self._seg_time) == 0:
+            return self.waypoints_pos[0].copy(), self.waypoints_quat[0].copy(), 0, 1e-6
+
+        tau = float(np.clip(tau, 0.0, self.duration))
+        seg_idx = int(np.searchsorted(self._cum_time, tau, side="right"))
+        seg_idx = min(seg_idx, len(self._seg_time) - 1)
+        t0 = 0.0 if seg_idx == 0 else float(self._cum_time[seg_idx - 1])
+        t1 = float(self._cum_time[seg_idx])
+        dt_seg = max(t1 - t0, 1e-6)
+        alpha = float(np.clip((tau - t0) / dt_seg, 0.0, 1.0))
+
+        p0, p1 = self.waypoints_pos[seg_idx], self.waypoints_pos[seg_idx + 1]
+        q0, q1 = self.waypoints_quat[seg_idx], self.waypoints_quat[seg_idx + 1]
+        pos = (1.0 - alpha) * p0 + alpha * p1
+        quat = Slerp([0.0, 1.0], Rotation.from_quat(np.vstack([q0, q1])))([alpha]).as_quat()[0]
+        return pos, quat, seg_idx, dt_seg
+
+    def sample(self, t):
+        tau = float(np.clip(t, 0.0, self.duration))
+        pos, quat, seg_idx, dt_seg = self._sample_pose(tau)
+        if tau >= self.duration:
+            return pos, quat, np.zeros(3), np.zeros(3)
+
+        p0 = self.waypoints_pos[seg_idx]
+        p1 = self.waypoints_pos[seg_idx + 1]
+        lin_vel = (p1 - p0) / dt_seg
+
+        next_tau = min(self.duration, tau + self.dt)
+        _, next_quat, _, _ = self._sample_pose(next_tau)
+        ang_vel = (
+            Rotation.from_quat(next_quat) * Rotation.from_quat(quat).inv()
+        ).as_rotvec() / max(next_tau - tau, 1e-6)
+        return pos, quat, lin_vel, ang_vel
+
+    def reference_points(self, n):
+        return [self.sample(t)[0] for t in np.linspace(0, self.duration, n, endpoint=True)]
+
+
+class CartesianRRTNominalPlanner:
+    """用 pybullet_planning 在末端尖点笛卡尔空间做名义 RRT 探路。"""
+
+    def __init__(self, robot: JakaRobot, config: ExperimentConfig, workpiece_body_id: int):
+        if pp is None:
+            raise RuntimeError("未安装 pybullet_planning，请先安装后再启用 RRT 名义规划器。")
+        if robot.welding_gun_base_link_index < 0:
+            raise RuntimeError("未找到 welding_gun_base link，无法做笛卡尔 RRT 碰撞检查。")
+        self.robot = robot
+        self.config = config
+        self.workpiece_body_id = workpiece_body_id
+        self.last_plan_statuses: list[str] = []
+
+    @staticmethod
+    def _rounded_key(pos: np.ndarray) -> tuple[float, float, float]:
+        arr = np.array(pos, dtype=float)
+        return tuple(np.round(arr, 4).tolist())
+
+    def _linear_fallback(self, start_pos: np.ndarray, goal_pos: np.ndarray, n: int = 24) -> list[np.ndarray]:
+        return [
+            (1.0 - alpha) * start_pos + alpha * goal_pos
+            for alpha in np.linspace(0.0, 1.0, n, endpoint=True)
+        ]
+
+    def _make_pose_helpers(self, start_pos, start_quat, goal_pos, goal_quat):
+        start_pos = np.array(start_pos, dtype=float)
+        goal_pos = np.array(goal_pos, dtype=float)
+        start_quat = np.array(start_quat, dtype=float)
+        goal_quat = np.array(goal_quat, dtype=float)
+        chord = goal_pos - start_pos
+        chord_norm_sq = float(np.dot(chord, chord))
+        slerp = Slerp([0.0, 1.0], Rotation.from_quat(np.vstack([start_quat, goal_quat])))
+
+        def alpha_from_pos(pos):
+            pos = np.array(pos, dtype=float)
+            if chord_norm_sq < 1e-12:
+                return 0.0
+            alpha = float(np.dot(pos - start_pos, chord) / chord_norm_sq)
+            return float(np.clip(alpha, 0.0, 1.0))
+
+        def quat_from_pos(pos):
+            return slerp([alpha_from_pos(pos)]).as_quat()[0]
+
+        return alpha_from_pos, quat_from_pos
+
+    def _choose_seed_q(self, pos, alpha_from_pos, q_seed_start, q_seed_goal, cache_entries):
+        alpha = alpha_from_pos(pos)
+        seed_q = (1.0 - alpha) * q_seed_start + alpha * q_seed_goal
+        if cache_entries:
+            nearest_pos, nearest_q = min(
+                cache_entries,
+                key=lambda item: np.linalg.norm(np.array(pos, dtype=float) - item[0]),
+            )
+            if np.linalg.norm(np.array(pos, dtype=float) - nearest_pos) < 0.20:
+                seed_q = nearest_q
+        return np.array(seed_q, dtype=float)
+
+    def _solve_pose_ik(self, target_pos, target_quat, seed_q):
+        q_sol = self.robot.calculate_ik(target_pos, target_quat, rest_poses=seed_q)
+        self.robot.set_joint_state(q_sol)
+        ee_pos, _ = self.robot.get_ee_pose()
+        if np.linalg.norm(np.array(target_pos, dtype=float) - ee_pos) > self.config.rrt_ik_tolerance:
+            return None
+        return q_sol
+
+    def _base_collides_with_workpiece(self, q):
+        if self.config.ignore_all_collisions:
+            return False
+        self.robot.set_joint_state(q)
+        closest = self.robot.get_closest_point_to_obstacle(
+            self.robot.welding_gun_base_link_index,
+            self.workpiece_body_id,
+            max_dist=max(1.0, self.config.rrt_cartesian_margin * 3.0),
+        )
+        if closest is None:
+            return False
+        return float(closest[1]) < self.config.safety_margin
+
+    def _plan_single_segment(
+        self,
+        start_pos: np.ndarray,
+        start_quat: np.ndarray,
+        goal_pos: np.ndarray,
+        goal_quat: np.ndarray,
+        q_seed_start: np.ndarray,
+        q_seed_goal: np.ndarray,
+        duration: float,
+    ) -> JointWaypointTrajectory:
+        start_pos = np.array(start_pos, dtype=float)
+        start_quat = np.array(start_quat, dtype=float)
+        goal_pos = np.array(goal_pos, dtype=float)
+        goal_quat = np.array(goal_quat, dtype=float)
+        q_seed_start = np.array(q_seed_start, dtype=float)
+        q_seed_goal = np.array(q_seed_goal, dtype=float)
+
+        alpha_from_pos, quat_from_pos = self._make_pose_helpers(start_pos, start_quat, goal_pos, goal_quat)
+        cache: dict[tuple[float, float, float], np.ndarray] = {
+            self._rounded_key(start_pos): q_seed_start.copy(),
+            self._rounded_key(goal_pos): q_seed_goal.copy(),
+        }
+        cache_entries = [
+            (start_pos.copy(), q_seed_start.copy()),
+            (goal_pos.copy(), q_seed_goal.copy()),
+        ]
+
+        def collision_fn(conf, diagnosis=False, **_kwargs):
+            pos = np.array(conf, dtype=float)
+            key = self._rounded_key(pos)
+            q_candidate = cache.get(key)
+            if q_candidate is None:
+                seed_q = self._choose_seed_q(pos, alpha_from_pos, q_seed_start, q_seed_goal, cache_entries)
+                q_candidate = self._solve_pose_ik(pos, quat_from_pos(pos), seed_q)
+                if q_candidate is None:
+                    return True
+                cache[key] = q_candidate.copy()
+                cache_entries.append((pos.copy(), q_candidate.copy()))
+            return self._base_collides_with_workpiece(q_candidate)
+
+        margin = self.config.rrt_cartesian_margin
+        lower = np.minimum(start_pos, goal_pos) - margin
+        upper = np.maximum(start_pos, goal_pos) + margin
+        resolution = max(self.config.rrt_cartesian_resolution, 1e-3)
+
+        def distance_fn(q1, q2):
+            return float(np.linalg.norm(np.array(q2, dtype=float) - np.array(q1, dtype=float)))
+
+        def sample_fn():
+            return np.random.uniform(lower, upper).tolist()
+
+        def extend_fn(q1, q2):
+            q1 = np.array(q1, dtype=float)
+            q2 = np.array(q2, dtype=float)
+            dist = np.linalg.norm(q2 - q1)
+            n_steps = max(int(np.ceil(dist / resolution)), 1)
+            return [
+                (q1 + (idx / n_steps) * (q2 - q1)).tolist()
+                for idx in range(1, n_steps + 1)
+            ]
+
+        path_pos = None
+        try:
+            path_pos = pp.birrt(
+                start_pos.tolist(),
+                goal_pos.tolist(),
+                distance_fn,
+                sample_fn,
+                extend_fn,
+                collision_fn,
+                max_iterations=self.config.rrt_max_iterations,
+                max_time=self.config.rrt_max_time,
+                restarts=self.config.rrt_restarts,
+                smooth=self.config.rrt_smooth,
+            )
+        except TypeError:
+            path_pos = pp.birrt(
+                start_pos.tolist(),
+                goal_pos.tolist(),
+                distance_fn,
+                sample_fn,
+                extend_fn,
+                collision_fn,
+                max_iterations=self.config.rrt_max_iterations,
+                max_time=self.config.rrt_max_time,
+            )
+
+        planner_status = "rrt"
+        if path_pos is None or len(path_pos) == 0:
+            print("[warn] RRT 未找到可行路径，使用线性插值名义路径回退。")
+            path_pos = [pt.tolist() for pt in self._linear_fallback(start_pos, goal_pos)]
+            planner_status = "linear_fallback"
+
+        waypoints_pos = [np.array(pos, dtype=float) for pos in path_pos]
+        waypoints_quat = [np.array(quat_from_pos(pos), dtype=float) for pos in waypoints_pos]
+        if waypoints_quat:
+            waypoints_quat[0] = start_quat.copy()
+            waypoints_quat[-1] = goal_quat.copy()
+        return JointWaypointTrajectory(
+            waypoints_pos,
+            waypoints_quat,
+            duration,
+            self.config.dt,
+            planner_status=planner_status,
+        )
+
+    def build_three_phase_trajectory(
+        self,
+        q_init: np.ndarray,
+        q_start: np.ndarray,
+        q_goal: np.ndarray,
+        initial_pose: tuple[np.ndarray, np.ndarray],
+        start_ref: tuple[np.ndarray, np.ndarray],
+        goal_ref: tuple[np.ndarray, np.ndarray],
+    ) -> PiecewiseLineSlerpTrajectory:
+        q_backup, dq_backup = self.robot.get_joint_state()
+        q_init = np.array(q_init, dtype=float)
+        q_start = np.array(q_start, dtype=float)
+        q_goal = np.array(q_goal, dtype=float)
+        initial_pos, initial_quat = initial_pose
+        start_pos, start_quat = start_ref
+        goal_pos, goal_quat = goal_ref
+
+        try:
+            print("[rrt] 规划第 1 段: 初始 -> 焊接起点 ...")
+            seg_1 = self._plan_single_segment(
+                initial_pos, initial_quat, start_pos, start_quat, q_init, q_start, self.config.approach_duration
+            )
+            print(f"[rrt]   -> {len(seg_1.waypoints_pos)} 个路径点 ({seg_1.planner_status})")
+
+            print("[rrt] 规划第 2 段: 焊接起点 -> 焊接终点 ...")
+            seg_2 = self._plan_single_segment(
+                start_pos, start_quat, goal_pos, goal_quat, q_start, q_goal, self.config.weld_duration
+            )
+            print(f"[rrt]   -> {len(seg_2.waypoints_pos)} 个路径点 ({seg_2.planner_status})")
+
+            print("[rrt] 规划第 3 段: 焊接终点 -> 初始 ...")
+            seg_3 = self._plan_single_segment(
+                goal_pos, goal_quat, initial_pos, initial_quat, q_goal, q_init, self.config.return_duration
+            )
+            print(f"[rrt]   -> {len(seg_3.waypoints_pos)} 个路径点 ({seg_3.planner_status})")
+            self.last_plan_statuses = [seg_1.planner_status, seg_2.planner_status, seg_3.planner_status]
+        finally:
+            self.robot.set_joint_state(q_backup, dq_backup)
+        return PiecewiseLineSlerpTrajectory([seg_1, seg_2, seg_3])
+
+
 # ============================================================================
 #  控制器
 # ============================================================================
@@ -808,7 +1159,7 @@ class CBFQPController(Controller):
 
     def solve(self, q, dq, ee_pos, ee_quat, ref_pos, ref_quat, ref_lin_vel, ref_ang_vel, obstacles, current_time=0.0):
         pos_err = ref_pos - ee_pos
-        rot_err = (Rotation.from_quat(ref_quat) * Rotation.from_quat(ee_quat).inv()).as_rotvec()
+        rot_err = quaternion_error_rotvec(ee_quat, ref_quat)
         xdot_ref = np.concatenate([
             ref_lin_vel + self.config.position_gain * pos_err,
             ref_ang_vel + self.config.orientation_gain * rot_err,
@@ -859,6 +1210,7 @@ class CBFQPController(Controller):
             "max_slack": 0.0,
             "status": status,
             "tracking_error": float(np.linalg.norm(pos_err)),
+            "orientation_error": float(np.linalg.norm(rot_err)),
         }
 
 
@@ -904,20 +1256,25 @@ class MPCDCBFController(Controller):
                     grad_rows.append(self.robot.get_link_cbf_row(li, normal, q, dq))
         return grad_rows, h_vals
 
-    def _build_qp(self, ee_pos, j_pos, ref_positions, grad_rows, h_vals):
+    def _build_qp(self, ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals):
         n, N = self.n, self.N
         mdt = self.config.mpc_dt
         cfg = self.config
         dim = n * N
 
-        jtj = mdt ** 2 * (j_pos.T @ j_pos)
+        jtj_pos = mdt ** 2 * (j_pos.T @ j_pos)
+        jtj_rot = mdt ** 2 * (j_rot.T @ j_rot)
         idx = np.arange(N)
         weight_mat = (N - np.maximum(idx[:, None], idx[None, :])).astype(float)
-        h_mat = 2.0 * cfg.mpc_tracking_weight * np.kron(weight_mat, jtj)
+        h_mat = 2.0 * cfg.mpc_tracking_weight * np.kron(weight_mat, jtj_pos)
+        h_mat += 2.0 * cfg.mpc_orientation_tracking_weight * np.kron(weight_mat, jtj_rot)
 
         c_vecs = np.array([ee_pos - ref_positions[k] for k in range(N)])
         c_suffix = np.cumsum(c_vecs[::-1], axis=0)[::-1]
         f_vec = 2.0 * cfg.mpc_tracking_weight * mdt * (c_suffix @ j_pos).ravel()
+        rot_vecs = -np.array(ref_rotvecs, dtype=float)
+        rot_suffix = np.cumsum(rot_vecs[::-1], axis=0)[::-1]
+        f_vec += 2.0 * cfg.mpc_orientation_tracking_weight * mdt * (rot_suffix @ j_rot).ravel()
 
         h_mat += 2.0 * cfg.mpc_control_weight * np.eye(dim)
         if N > 1:
@@ -952,15 +1309,20 @@ class MPCDCBFController(Controller):
 
         j_full = self.robot.get_ee_jacobian(q, dq)
         j_pos = j_full[:3]
+        j_rot = j_full[3:]
 
         ref_positions = []
+        ref_rotvecs = []
         for k in range(1, N + 1):
-            pk, _, _, _ = self.trajectory.sample(min(current_time + k * cfg.mpc_dt, self.trajectory.duration))
+            pk, qk, _, _ = self.trajectory.sample(min(current_time + k * cfg.mpc_dt, self.trajectory.duration))
             ref_positions.append(pk)
+            ref_rotvecs.append(quaternion_error_rotvec(ee_quat, qk))
 
         grad_rows, h_vals = self._build_cbf_data(q, dq, obstacles)
         min_h = float(np.min(h_vals)) if h_vals else 1.0
-        h_mat, f_vec, a_cbf, b_cbf = self._build_qp(ee_pos, j_pos, ref_positions, grad_rows, h_vals)
+        h_mat, f_vec, a_cbf, b_cbf = self._build_qp(
+            ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals
+        )
 
         constraints = []
         if len(grad_rows) > 0:
@@ -976,7 +1338,7 @@ class MPCDCBFController(Controller):
             x0[(N - 1) * n :] = self._prev_sol[(N - 1) * n :]
         else:
             pos_err = ref_pos - ee_pos
-            rot_err = (Rotation.from_quat(ref_quat) * Rotation.from_quat(ee_quat).inv()).as_rotvec()
+            rot_err = quaternion_error_rotvec(ee_quat, ref_quat)
             xdot = np.concatenate([
                 ref_lin_vel + cfg.position_gain * pos_err,
                 ref_ang_vel + cfg.orientation_gain * rot_err,
@@ -1003,11 +1365,13 @@ class MPCDCBFController(Controller):
             status = "mpc_fallback"
 
         pos_err = ref_pos - ee_pos
+        rot_err = quaternion_error_rotvec(ee_quat, ref_quat)
         info = {
             "min_h": min_h,
             "max_slack": 0.0,
             "status": status,
             "tracking_error": float(np.linalg.norm(pos_err)),
+            "orientation_error": float(np.linalg.norm(rot_err)),
         }
         self._cached_u = u_cmd
         self._cached_info = info
@@ -1040,16 +1404,17 @@ class AvoidanceExperiment:
 
         obstacle = create_obstacle(config, self.scene, ee_pos_init)
         self.obstacles: list[Obstacle] = []
-        if obstacle is not None:
+        if obstacle is not None and not config.ignore_all_collisions:
             obstacle.disable_collision_with(self.robot.body_id, self.robot.num_joints)
             self.obstacles.append(obstacle)
 
-        wp_obs = URDFObstacle(
-            self.workpiece.body_id,
-            cbf_link_indices=[li for li in self.robot.cbf_link_indices if li != self.robot.ee_link_index],
-        )
-        wp_obs.disable_collision_with(self.robot.body_id, self.robot.num_joints)
-        self.obstacles.append(wp_obs)
+        if not config.ignore_all_collisions:
+            wp_obs = URDFObstacle(
+                self.workpiece.body_id,
+                cbf_link_indices=[li for li in self.robot.cbf_link_indices if li != self.robot.ee_link_index],
+            )
+            wp_obs.disable_collision_with(self.robot.body_id, self.robot.num_joints)
+            self.obstacles.append(wp_obs)
 
         start_pos, start_frame_quat = self.workpiece.get_frame_pose(config.start_link_name)
         goal_pos, goal_frame_quat = self.workpiece.get_frame_pose(config.goal_link_name)
@@ -1069,15 +1434,64 @@ class AvoidanceExperiment:
         self.start_ref = (start_pos, np.array(start_quat, dtype=float))
         self.goal_ref = (goal_pos, np.array(goal_quat, dtype=float))
 
-        self.trajectory = PiecewiseLineSlerpTrajectory([
-            LineSlerpTrajectory(self.initial_pos, self.initial_quat, start_pos, start_quat, config.approach_duration, config.dt),
-            LineSlerpTrajectory(start_pos, start_quat, goal_pos, goal_quat, config.weld_duration, config.dt),
-            LineSlerpTrajectory(goal_pos, goal_quat, self.initial_pos, self.initial_quat, config.return_duration, config.dt),
-        ])
+        if config.use_rrt_nominal_planner:
+            q_init, _ = self.robot.get_joint_state()
+            q_start = self.robot.calculate_ik(start_pos, start_quat)
+            q_goal = self.robot.calculate_ik(goal_pos, goal_quat)
+            self.nominal_planner = CartesianRRTNominalPlanner(
+                self.robot,
+                config,
+                workpiece_body_id=self.workpiece.body_id,
+            )
+            self.trajectory = self.nominal_planner.build_three_phase_trajectory(
+                q_init,
+                q_start,
+                q_goal,
+                (self.initial_pos, self.initial_quat),
+                self.start_ref,
+                self.goal_ref,
+            )
+            if config.ignore_all_collisions:
+                print("[info] 名义轨迹使用末端尖点笛卡尔 RRT（当前忽略全部碰撞）。")
+            else:
+                print("[info] 名义轨迹使用末端尖点笛卡尔 RRT（仅检查 welding_gun_base 对工件碰撞）。")
+            print(
+                "[info] 各段规划状态: "
+                + ", ".join(
+                    f"seg{i + 1}={status}"
+                    for i, status in enumerate(self.nominal_planner.last_plan_statuses)
+                )
+            )
+        else:
+            self.trajectory = PiecewiseLineSlerpTrajectory([
+                LineSlerpTrajectory(self.initial_pos, self.initial_quat, start_pos, start_quat, config.approach_duration, config.dt),
+                LineSlerpTrajectory(start_pos, start_quat, goal_pos, goal_quat, config.weld_duration, config.dt),
+                LineSlerpTrajectory(goal_pos, goal_quat, self.initial_pos, self.initial_quat, config.return_duration, config.dt),
+            ])
+        if config.ignore_all_collisions:
+            print("[info] CBF/名义规划均已忽略碰撞，仅保留轨迹跟踪。")
 
-        colors = ([0.85, 0.35, 0.15], [0.95, 0.15, 0.15], [0.20, 0.45, 0.90])
-        for pts, color in zip(self.trajectory.segment_reference_points(config.reference_samples), colors):
-            self.scene.draw_polyline(pts, color=color, width=1.8)
+        seg_colors = ([0.85, 0.35, 0.15], [0.95, 0.15, 0.15], [0.20, 0.45, 0.90])
+        for seg, color in zip(self.trajectory.segments, seg_colors):
+            if hasattr(seg, 'waypoints_pos') and len(seg.waypoints_pos) > 1:
+                is_rrt = getattr(seg, "planner_status", "") == "rrt"
+                draw_color = color if is_rrt else [0.35, 0.35, 0.35]
+                draw_width = 2.8 if is_rrt else 1.4
+                marker_rgba = (*color, 0.90) if is_rrt else (0.15, 0.15, 0.15, 0.75)
+                self.scene.draw_polyline(seg.waypoints_pos, color=draw_color, width=draw_width)
+                stride = max(1, len(seg.waypoints_pos) // 20)
+                for i in range(0, len(seg.waypoints_pos), stride):
+                    self.scene.create_marker(0.005 if is_rrt else 0.004, marker_rgba, seg.waypoints_pos[i].tolist())
+                label = "RRT" if is_rrt else "fallback"
+                p.addUserDebugText(
+                    label,
+                    seg.waypoints_pos[0].tolist(),
+                    textColorRGB=draw_color,
+                    textSize=1.1,
+                )
+            else:
+                pts = seg.reference_points(config.reference_samples)
+                self.scene.draw_polyline(pts, color=color, width=1.8)
 
         weld_dir_start = Rotation.from_quat(start_frame_quat).apply(_normalize(np.array(config.weld_local_direction, dtype=float)))
         weld_dir_goal = Rotation.from_quat(goal_frame_quat).apply(_normalize(np.array(config.weld_local_direction, dtype=float)))
@@ -1113,6 +1527,7 @@ class AvoidanceExperiment:
         self.scene.update_status(
             f"seg={seg_idx}  step={self.sim_step}  "
             f"err={info['tracking_error']*1000:.1f}mm  "
+            f"rot={math.degrees(info.get('orientation_error', 0.0)):.1f}deg  "
             f"h={info['min_h']*1000:.1f}mm  "
             f"{info['status']}"
         )
@@ -1153,8 +1568,17 @@ class AvoidanceExperiment:
                     next_seg = self.trajectory.current_segment_index(
                         min(next_t, self.trajectory.duration))
                     if next_seg > gate_seg and gate_seg < n_segs - 1:
-                        seg_goal = self.trajectory.segments[gate_seg].goal_pos
-                        if np.linalg.norm(ee_pos - seg_goal) < self.config.segment_switch_threshold:
+                        seg = self.trajectory.segments[gate_seg]
+                        seg_goal = seg.goal_pos
+                        seg_goal_quat = seg.goal_quat
+                        if pose_within_thresholds(
+                            ee_pos,
+                            seg_goal,
+                            ee_quat,
+                            seg_goal_quat,
+                            self.config.segment_switch_threshold,
+                            self.config.segment_switch_rot_threshold,
+                        ):
                             gate_seg = next_seg
                             traj_time = min(next_t, self.trajectory.duration)
                             print(f"[gate] 段 {gate_seg} 已解锁 (step {self.sim_step})")
@@ -1186,18 +1610,21 @@ class AvoidanceExperiment:
                         f"seg={gate_seg + 1} "
                         f"gantry=({gp[0]:.3f},{gp[1]:.3f},{gp[2]:.3f}) "
                         f"err={info['tracking_error']*1000:.1f}mm "
+                        f"rot={math.degrees(info.get('orientation_error', 0.0)):.1f}deg "
                         f"h={info['min_h']*1000:.1f}mm "
                         f"{info['status']}"
                     )
                 self.sim_step += 1
                 time.sleep(self.config.dt)
 
-            self.robot.command_velocities(np.zeros(self.robot.dof))
+            if p.isConnected():
+                self.robot.command_velocities(np.zeros(self.robot.dof))
             if self.config.record_video and video_frames and imageio:
                 imageio.mimsave(self.config.video_output_path, video_frames, fps=self.config.video_fps)
                 print(f"录像已保存: {self.config.video_output_path}")
 
-            print("===== 轨迹结束，保持窗口 (Ctrl+C 退出) =====")
+            if p.isConnected():
+                print("===== 轨迹结束，保持窗口 (Ctrl+C 退出) =====")
             while p.isConnected():
                 q, dq = self.robot.get_joint_state()
                 ee_pos, ee_quat = self.robot.get_ee_pose()
