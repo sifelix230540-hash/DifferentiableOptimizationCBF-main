@@ -116,9 +116,11 @@ class ExperimentConfig:
     mpc_control_weight: float = 0.2
     mpc_smooth_weight: float = 0.2
     mpc_replan_steps: int = 6
+    mpc_progress_step_min: float = 0.01
 
     segment_switch_threshold: float = 0.10
     segment_switch_rot_threshold: float = 0.15
+    progress_end_tolerance: float = 0.02
 
     print_every: int = 120
     reference_samples: int = 80
@@ -882,6 +884,186 @@ class JointWaypointTrajectory:
         return [self.sample(t)[0] for t in np.linspace(0, self.duration, n, endpoint=True)]
 
 
+class PathProgressTrajectory:
+    """将分段轨迹包装为按路径进度采样的连续轨迹。"""
+
+    def __init__(self, base_trajectory: PiecewiseLineSlerpTrajectory):
+        self.base_trajectory = base_trajectory
+        self.segments = list(base_trajectory.segments)
+        self.duration = float(base_trajectory.duration)
+        self.dt = float(base_trajectory.dt)
+
+        positions: list[np.ndarray] = []
+        quats: list[np.ndarray] = []
+        times: list[float] = []
+        self.segment_end_progress: list[float] = []
+
+        time_offset = 0.0
+        for seg in self.segments:
+            seg_positions, seg_quats, seg_times = self._segment_control_points(seg)
+            if positions:
+                seg_positions = seg_positions[1:]
+                seg_quats = seg_quats[1:]
+                seg_times = seg_times[1:]
+            positions.extend(seg_positions)
+            quats.extend(seg_quats)
+            times.extend([time_offset + float(tau) for tau in seg_times])
+            time_offset += float(seg.duration)
+
+        self.positions = [np.array(pnt, dtype=float) for pnt in positions]
+        self.quats = [np.array(qt, dtype=float) for qt in quats]
+        self.times = np.array(times, dtype=float) if times else np.zeros(1)
+
+        progress = [0.0]
+        for idx in range(len(self.positions) - 1):
+            ds = float(np.linalg.norm(self.positions[idx + 1] - self.positions[idx]))
+            progress.append(progress[-1] + ds)
+        self.progress = np.array(progress, dtype=float) if progress else np.zeros(1)
+        self.progress_end = float(self.progress[-1]) if len(self.progress) else 0.0
+
+        point_offset = 0
+        for seg in self.segments:
+            seg_points, _, _ = self._segment_control_points(seg)
+            point_offset += len(seg_points) - 1
+            point_offset = min(point_offset, len(self.progress) - 1)
+            self.segment_end_progress.append(float(self.progress[point_offset]))
+
+    def _segment_control_points(self, seg):
+        if hasattr(seg, "waypoints_pos"):
+            seg_positions = [np.array(pnt, dtype=float) for pnt in seg.waypoints_pos]
+            seg_quats = [np.array(qt, dtype=float) for qt in seg.waypoints_quat]
+            local_times = [0.0]
+            if hasattr(seg, "_seg_time"):
+                for dt_seg in seg._seg_time:
+                    local_times.append(local_times[-1] + float(dt_seg))
+            else:
+                local_times = list(np.linspace(0.0, seg.duration, len(seg_positions), endpoint=True))
+            return seg_positions, seg_quats, local_times
+
+        seg_positions = [np.array(seg.start_pos, dtype=float), np.array(seg.goal_pos, dtype=float)]
+        seg_quats = [np.array(seg.start_quat, dtype=float), np.array(seg.goal_quat, dtype=float)]
+        return seg_positions, seg_quats, [0.0, float(seg.duration)]
+
+    def _interval_index_from_progress(self, s: float) -> int:
+        if len(self.progress) <= 1:
+            return 0
+        tau = float(np.clip(s, 0.0, self.progress_end))
+        idx = int(np.searchsorted(self.progress, tau, side="right") - 1)
+        return min(max(idx, 0), len(self.progress) - 2)
+
+    def current_segment_index(self, s: float) -> int:
+        if not self.segment_end_progress:
+            return 0
+        tau = float(np.clip(s, 0.0, self.progress_end))
+        return int(np.searchsorted(np.array(self.segment_end_progress), tau, side="right"))
+
+    def sample_by_progress(self, s: float):
+        if len(self.positions) == 0:
+            raise RuntimeError("空轨迹无法采样")
+        if len(self.positions) == 1:
+            return self.positions[0].copy(), self.quats[0].copy(), np.zeros(3), np.zeros(3)
+
+        tau = float(np.clip(s, 0.0, self.progress_end))
+        idx = self._interval_index_from_progress(tau)
+        s0 = float(self.progress[idx])
+        s1 = float(self.progress[idx + 1])
+        ds = max(s1 - s0, 1e-9)
+        alpha = float(np.clip((tau - s0) / ds, 0.0, 1.0))
+
+        p0, p1 = self.positions[idx], self.positions[idx + 1]
+        q0, q1 = self.quats[idx], self.quats[idx + 1]
+        pos = (1.0 - alpha) * p0 + alpha * p1
+        quat = Slerp([0.0, 1.0], Rotation.from_quat(np.vstack([q0, q1])))([alpha]).as_quat()[0]
+
+        t0 = float(self.times[idx])
+        t1 = float(self.times[idx + 1]) if idx + 1 < len(self.times) else t0
+        dt_seg = max(t1 - t0, 1e-6)
+        lin_vel = (p1 - p0) / dt_seg
+
+        if tau >= self.progress_end:
+            return pos, quat, np.zeros(3), np.zeros(3)
+        ang_vel = (
+            Rotation.from_quat(q1) * Rotation.from_quat(q0).inv()
+        ).as_rotvec() / dt_seg
+        return pos, quat, lin_vel, ang_vel
+
+    def sample(self, t: float):
+        if len(self.times) == 0:
+            raise RuntimeError("空轨迹无法采样")
+        tau = float(np.clip(t, 0.0, self.duration))
+        progress = float(np.interp(tau, self.times, self.progress))
+        return self.sample_by_progress(progress)
+
+    def advance_progress(self, current_progress: float, projected_progress: float) -> float:
+        return float(np.clip(max(current_progress, projected_progress), 0.0, self.progress_end))
+
+    def project_progress(self, pos: np.ndarray, hint_progress: float | None = None, search_radius: float | None = None) -> float:
+        query = np.array(pos, dtype=float)
+        if len(self.positions) <= 1:
+            return 0.0
+
+        if hint_progress is None:
+            search_lo = 0.0
+            search_hi = self.progress_end
+            hint = None
+        else:
+            radius = self.progress_end if search_radius is None else float(search_radius)
+            hint = float(np.clip(hint_progress, 0.0, self.progress_end))
+            search_lo = max(0.0, hint - radius)
+            search_hi = min(self.progress_end, hint + radius)
+
+        best_progress = 0.0
+        best_dist_sq = float("inf")
+        best_hint_dist = float("inf")
+        for idx in range(len(self.positions) - 1):
+            seg_start = float(self.progress[idx])
+            seg_end = float(self.progress[idx + 1])
+            if seg_end < search_lo or seg_start > search_hi:
+                continue
+            p0, p1 = self.positions[idx], self.positions[idx + 1]
+            seg = p1 - p0
+            seg_len_sq = float(np.dot(seg, seg))
+            if seg_len_sq < 1e-12:
+                alpha = 0.0
+                proj = p0
+            else:
+                alpha = float(np.clip(np.dot(query - p0, seg) / seg_len_sq, 0.0, 1.0))
+                proj = p0 + alpha * seg
+                if seg_end > seg_start:
+                    alpha_lo = float(np.clip((search_lo - seg_start) / (seg_end - seg_start), 0.0, 1.0))
+                    alpha_hi = float(np.clip((search_hi - seg_start) / (seg_end - seg_start), 0.0, 1.0))
+                    alpha = float(np.clip(alpha, alpha_lo, alpha_hi))
+                    proj = p0 + alpha * seg
+            dist_sq = float(np.dot(query - proj, query - proj))
+            cand_progress = float(self.progress[idx] + alpha * np.sqrt(seg_len_sq))
+            cand_hint_dist = abs(cand_progress - hint) if hint is not None else 0.0
+            if (
+                dist_sq < best_dist_sq - 1e-12
+                or (abs(dist_sq - best_dist_sq) <= 1e-12 and cand_hint_dist < best_hint_dist)
+            ):
+                best_dist_sq = dist_sq
+                best_progress = cand_progress
+                best_hint_dist = cand_hint_dist
+        if best_dist_sq == float("inf"):
+            return self.project_progress(query, hint_progress=None)
+        return best_progress
+
+    def compute_path_errors(self, pos: np.ndarray, progress_value: float) -> tuple[float, float]:
+        ref_pos, _, _, _ = self.sample_by_progress(progress_value)
+        idx = self._interval_index_from_progress(progress_value)
+        if len(self.positions) <= 1:
+            tangent = np.array([1.0, 0.0, 0.0])
+        else:
+            tangent = _normalize(self.positions[idx + 1] - self.positions[idx])
+        delta = np.array(pos, dtype=float) - ref_pos
+        lag_error = float(np.dot(delta, tangent))
+        contour_vec = delta - lag_error * tangent
+        contour_error = float(np.linalg.norm(contour_vec))
+        return lag_error, contour_error
+
+    def reference_points(self, n):
+        return [self.sample_by_progress(s)[0] for s in np.linspace(0.0, self.progress_end, n, endpoint=True)]
+
 class CartesianRRTNominalPlanner:
     """用 pybullet_planning 在末端尖点笛卡尔空间做名义 RRT 探路。"""
 
@@ -1124,7 +1306,7 @@ class Controller(ABC):
         ref_lin_vel,
         ref_ang_vel,
         obstacles: list[Obstacle],
-        current_time: float = 0.0,
+        current_progress: float = 0.0,
     ) -> tuple[np.ndarray, dict]:
         ...
 
@@ -1157,7 +1339,7 @@ class CBFQPController(Controller):
                     a_rows.append(self.robot.get_link_cbf_row(li, normal, q, dq))
         return a_rows, h_vals
 
-    def solve(self, q, dq, ee_pos, ee_quat, ref_pos, ref_quat, ref_lin_vel, ref_ang_vel, obstacles, current_time=0.0):
+    def solve(self, q, dq, ee_pos, ee_quat, ref_pos, ref_quat, ref_lin_vel, ref_ang_vel, obstacles, current_progress=0.0):
         pos_err = ref_pos - ee_pos
         rot_err = quaternion_error_rotvec(ee_quat, ref_quat)
         xdot_ref = np.concatenate([
@@ -1299,7 +1481,7 @@ class MPCDCBFController(Controller):
 
         return h_mat, f_vec, a_cbf, b_cbf
 
-    def solve(self, q, dq, ee_pos, ee_quat, ref_pos, ref_quat, ref_lin_vel, ref_ang_vel, obstacles, current_time=0.0):
+    def solve(self, q, dq, ee_pos, ee_quat, ref_pos, ref_quat, ref_lin_vel, ref_ang_vel, obstacles, current_progress=0.0):
         self._step_count += 1
         if self._cached_u is not None and self._step_count % self.config.mpc_replan_steps != 0:
             return self._cached_u, self._cached_info
@@ -1313,8 +1495,11 @@ class MPCDCBFController(Controller):
 
         ref_positions = []
         ref_rotvecs = []
+        ds_ref = max(np.linalg.norm(ref_lin_vel) * cfg.mpc_dt, cfg.mpc_progress_step_min)
         for k in range(1, N + 1):
-            pk, qk, _, _ = self.trajectory.sample(min(current_time + k * cfg.mpc_dt, self.trajectory.duration))
+            pk, qk, _, _ = self.trajectory.sample_by_progress(
+                min(current_progress + k * ds_ref, self.trajectory.progress_end)
+            )
             ref_positions.append(pk)
             ref_rotvecs.append(quaternion_error_rotvec(ee_quat, qk))
 
@@ -1372,6 +1557,7 @@ class MPCDCBFController(Controller):
             "status": status,
             "tracking_error": float(np.linalg.norm(pos_err)),
             "orientation_error": float(np.linalg.norm(rot_err)),
+            "progress_step": float(ds_ref),
         }
         self._cached_u = u_cmd
         self._cached_info = info
@@ -1443,7 +1629,7 @@ class AvoidanceExperiment:
                 config,
                 workpiece_body_id=self.workpiece.body_id,
             )
-            self.trajectory = self.nominal_planner.build_three_phase_trajectory(
+            base_trajectory = self.nominal_planner.build_three_phase_trajectory(
                 q_init,
                 q_start,
                 q_goal,
@@ -1463,11 +1649,12 @@ class AvoidanceExperiment:
                 )
             )
         else:
-            self.trajectory = PiecewiseLineSlerpTrajectory([
+            base_trajectory = PiecewiseLineSlerpTrajectory([
                 LineSlerpTrajectory(self.initial_pos, self.initial_quat, start_pos, start_quat, config.approach_duration, config.dt),
                 LineSlerpTrajectory(start_pos, start_quat, goal_pos, goal_quat, config.weld_duration, config.dt),
                 LineSlerpTrajectory(goal_pos, goal_quat, self.initial_pos, self.initial_quat, config.return_duration, config.dt),
             ])
+        self.trajectory = PathProgressTrajectory(base_trajectory)
         if config.ignore_all_collisions:
             print("[info] CBF/名义规划均已忽略碰撞，仅保留轨迹跟踪。")
 
@@ -1517,13 +1704,13 @@ class AvoidanceExperiment:
         self.scene.enable_rendering()
         print(f"===== 焊接实验 (控制器: {config.controller_type}, 障碍: {config.obstacle_type}) =====")
 
-    def _update_visuals(self, ee_pos, ref_pos, info, t):
+    def _update_visuals(self, ee_pos, ref_pos, info, progress_value):
         self.scene.update_marker(self.ee_marker, ee_pos.tolist())
         self.scene.update_marker(self.ref_marker, ref_pos.tolist())
         if np.linalg.norm(ee_pos - self.prev_ee) > 1e-3:
             p.addUserDebugLine(self.prev_ee.tolist(), ee_pos.tolist(), [0.1, 0.8, 0.2], lineWidth=1.5)
             self.prev_ee = ee_pos.copy()
-        seg_idx = min(self.trajectory.current_segment_index(t) + 1, len(self.trajectory.segments))
+        seg_idx = min(self.trajectory.current_segment_index(progress_value) + 1, len(self.trajectory.segments))
         self.scene.update_status(
             f"seg={seg_idx}  step={self.sim_step}  "
             f"err={info['tracking_error']*1000:.1f}mm  "
@@ -1532,7 +1719,7 @@ class AvoidanceExperiment:
             f"{info['status']}"
         )
 
-    def _solve_step(self, q, dq, ee_pos, ee_quat, ref_pos, ref_quat, ref_lv, ref_av, t):
+    def _solve_step(self, q, dq, ee_pos, ee_quat, ref_pos, ref_quat, ref_lv, ref_av, progress_value):
         for obs in self.obstacles:
             obs.update_from_slider()
         return self.controller.solve(
@@ -1545,16 +1732,14 @@ class AvoidanceExperiment:
             ref_lv,
             ref_av,
             self.obstacles,
-            current_time=t,
+            current_progress=progress_value,
         )
 
     def run(self):
         video_frames = []
         rec_every = max(1, int(round((1 / self.config.dt) / self.config.video_fps))) if self.config.record_video else 0
 
-        traj_time = 0.0
-        gate_seg = 0
-        n_segs = len(self.trajectory.segments)
+        progress_exec = 0.0
         hold_steps = int(self.config.hold_duration / self.config.dt)
         hold_counter = 0
 
@@ -1562,55 +1747,48 @@ class AvoidanceExperiment:
             while p.isConnected():
                 q, dq = self.robot.get_joint_state()
                 ee_pos, ee_quat = self.robot.get_ee_pose()
+                progress_proj = self.trajectory.project_progress(
+                    ee_pos,
+                    hint_progress=progress_exec,
+                    search_radius=max(0.5, self.config.mpc_progress_step_min * self.config.N_mpc * 4.0),
+                )
+                progress_exec = self.trajectory.advance_progress(progress_exec, progress_proj)
 
-                if traj_time < self.trajectory.duration:
-                    next_t = traj_time + self.config.dt
-                    next_seg = self.trajectory.current_segment_index(
-                        min(next_t, self.trajectory.duration))
-                    if next_seg > gate_seg and gate_seg < n_segs - 1:
-                        seg = self.trajectory.segments[gate_seg]
-                        seg_goal = seg.goal_pos
-                        seg_goal_quat = seg.goal_quat
-                        if pose_within_thresholds(
-                            ee_pos,
-                            seg_goal,
-                            ee_quat,
-                            seg_goal_quat,
-                            self.config.segment_switch_threshold,
-                            self.config.segment_switch_rot_threshold,
-                        ):
-                            gate_seg = next_seg
-                            traj_time = min(next_t, self.trajectory.duration)
-                            print(f"[gate] 段 {gate_seg} 已解锁 (step {self.sim_step})")
-                        else:
-                            seg_end = float(self.trajectory.cumulative[gate_seg])
-                            traj_time = min(next_t, seg_end - 1e-6)
-                    else:
-                        traj_time = min(next_t, self.trajectory.duration)
-                else:
+                if progress_exec >= self.trajectory.progress_end - self.config.progress_end_tolerance:
                     hold_counter += 1
                     if hold_counter >= hold_steps:
                         break
+                else:
+                    hold_counter = 0
 
-                ref = self.trajectory.sample(traj_time)
-                u_cmd, info = self._solve_step(q, dq, ee_pos, ee_quat, *ref, traj_time)
+                ref = self.trajectory.sample_by_progress(progress_exec)
+                u_cmd, info = self._solve_step(q, dq, ee_pos, ee_quat, *ref, progress_exec)
+                lag_error, contour_error = self.trajectory.compute_path_errors(ee_pos, progress_exec)
+                info["progress_exec"] = float(progress_exec)
+                info["progress_proj"] = float(progress_proj)
+                info["lag_error"] = float(lag_error)
+                info["contour_error"] = float(contour_error)
 
                 alpha_q = self.config.q_nominal_tracking
                 self.robot.q_nominal = (1 - alpha_q) * self.robot.q_nominal + alpha_q * q
                 self.robot.command_velocities(u_cmd)
 
                 p.stepSimulation()
-                self._update_visuals(ee_pos, ref[0], info, traj_time)
+                self._update_visuals(ee_pos, ref[0], info, progress_exec)
                 if self.config.record_video and self.sim_step % rec_every == 0:
                     video_frames.append(self.scene.capture_frame(self.config.video_width, self.config.video_height))
                 if self.sim_step % self.config.print_every == 0:
                     gp = self.robot.get_gantry_pos()
+                    seg_idx = min(self.trajectory.current_segment_index(progress_exec) + 1, len(self.trajectory.segments))
                     print(
                         f"[step {self.sim_step:4d}] "
-                        f"seg={gate_seg + 1} "
+                        f"seg={seg_idx} "
+                        f"s={progress_exec:.3f}/{self.trajectory.progress_end:.3f} "
                         f"gantry=({gp[0]:.3f},{gp[1]:.3f},{gp[2]:.3f}) "
                         f"err={info['tracking_error']*1000:.1f}mm "
                         f"rot={math.degrees(info.get('orientation_error', 0.0)):.1f}deg "
+                        f"lag={info['lag_error']*1000:.1f}mm "
+                        f"cont={info['contour_error']*1000:.1f}mm "
                         f"h={info['min_h']*1000:.1f}mm "
                         f"{info['status']}"
                     )
@@ -1628,11 +1806,11 @@ class AvoidanceExperiment:
             while p.isConnected():
                 q, dq = self.robot.get_joint_state()
                 ee_pos, ee_quat = self.robot.get_ee_pose()
-                ref = self.trajectory.sample(self.trajectory.duration)
-                u_cmd, info = self._solve_step(q, dq, ee_pos, ee_quat, *ref, self.trajectory.duration)
+                ref = self.trajectory.sample_by_progress(self.trajectory.progress_end)
+                u_cmd, info = self._solve_step(q, dq, ee_pos, ee_quat, *ref, self.trajectory.progress_end)
                 self.robot.command_velocities(u_cmd)
                 p.stepSimulation()
-                self._update_visuals(ee_pos, ref[0], info, self.trajectory.duration)
+                self._update_visuals(ee_pos, ref[0], info, self.trajectory.progress_end)
                 time.sleep(1 / 60)
         except KeyboardInterrupt:
             print("\n用户中断。")

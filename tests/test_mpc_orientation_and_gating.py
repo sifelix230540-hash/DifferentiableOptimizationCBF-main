@@ -68,5 +68,59 @@ class GatingThresholdTests(unittest.TestCase):
         self.assertFalse(reached)
 
 
+class PathProgressTrajectoryTests(unittest.TestCase):
+    def test_project_progress_is_monotonic_along_path(self):
+        module = load_module()
+        quat = np.array([0.0, 0.0, 0.0, 1.0])
+        base_traj = module.PiecewiseLineSlerpTrajectory([
+            module.LineSlerpTrajectory([0.0, 0.0, 0.0], quat, [1.0, 0.0, 0.0], quat, 1.0, 0.1),
+            module.LineSlerpTrajectory([1.0, 0.0, 0.0], quat, [1.0, 1.0, 0.0], quat, 1.0, 0.1),
+        ])
+        traj = module.PathProgressTrajectory(base_traj)
+
+        probes = [
+            np.array([0.1, 0.0, 0.0]),
+            np.array([0.8, 0.0, 0.0]),
+            np.array([1.0, 0.2, 0.0]),
+            np.array([1.0, 0.9, 0.0]),
+        ]
+        progresses = [traj.project_progress(pos) for pos in probes]
+
+        self.assertTrue(all(a <= b for a, b in zip(progresses, progresses[1:])))
+
+    def test_sample_by_progress_is_continuous_across_segment_boundary(self):
+        module = load_module()
+        quat = np.array([0.0, 0.0, 0.0, 1.0])
+        base_traj = module.PiecewiseLineSlerpTrajectory([
+            module.LineSlerpTrajectory([0.0, 0.0, 0.0], quat, [1.0, 0.0, 0.0], quat, 1.0, 0.1),
+            module.LineSlerpTrajectory([1.0, 0.0, 0.0], quat, [1.0, 1.0, 0.0], quat, 1.0, 0.1),
+        ])
+        traj = module.PathProgressTrajectory(base_traj)
+        boundary = traj.segment_end_progress[0]
+
+        pos_before, quat_before, _, _ = traj.sample_by_progress(boundary - 1e-6)
+        pos_after, quat_after, _, _ = traj.sample_by_progress(boundary + 1e-6)
+
+        self.assertLess(np.linalg.norm(pos_after - pos_before), 1e-3)
+        self.assertAlmostEqual(abs(float(np.dot(quat_before, quat_after))), 1.0, places=4)
+
+    def test_project_progress_prefers_local_branch_when_start_end_overlap(self):
+        module = load_module()
+        quat = np.array([0.0, 0.0, 0.0, 1.0])
+        base_traj = module.PiecewiseLineSlerpTrajectory([
+            module.LineSlerpTrajectory([0.0, 0.0, 0.0], quat, [1.0, 0.0, 0.0], quat, 1.0, 0.1),
+            module.LineSlerpTrajectory([1.0, 0.0, 0.0], quat, [1.0, 1.0, 0.0], quat, 1.0, 0.1),
+            module.LineSlerpTrajectory([1.0, 1.0, 0.0], quat, [0.0, 0.0, 0.0], quat, 1.0, 0.1),
+        ])
+        traj = module.PathProgressTrajectory(base_traj)
+
+        start_pos = np.array([0.0, 0.0, 0.0])
+        start_progress = traj.project_progress(start_pos, hint_progress=0.0)
+        end_progress = traj.project_progress(start_pos, hint_progress=traj.progress_end)
+
+        self.assertLess(start_progress, 1e-6)
+        self.assertGreater(end_progress, traj.progress_end - 1e-3)
+
+
 if __name__ == "__main__":
     unittest.main()
