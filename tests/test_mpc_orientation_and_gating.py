@@ -48,24 +48,37 @@ class MPCOrientationTests(unittest.TestCase):
         self.assertGreater(np.linalg.norm(f_vec), 0.0)
 
 
-class GatingThresholdTests(unittest.TestCase):
-    def test_pose_threshold_requires_orientation_match(self):
+class SimplifiedModuleSurfaceTests(unittest.TestCase):
+    def test_module_keeps_only_current_mainline_symbols(self):
         module = load_module()
-        current_pos = np.array([1.0, 2.0, 3.0])
-        goal_pos = current_pos + np.array([0.005, 0.0, 0.0])
-        current_quat = np.array([0.0, 0.0, 0.0, 1.0])
-        goal_quat = module.Rotation.from_euler("z", 40.0, degrees=True).as_quat()
 
-        reached = module.pose_within_thresholds(
-            current_pos,
-            goal_pos,
-            current_quat,
-            goal_quat,
-            pos_threshold=0.03,
-            rot_threshold=0.10,
-        )
+        self.assertTrue(hasattr(module, "ExperimentConfig"))
+        self.assertTrue(hasattr(module, "MPCDCBFController"))
+        self.assertTrue(hasattr(module, "PathProgressTrajectory"))
+        self.assertTrue(hasattr(module, "CartesianRRTNominalPlanner"))
+        self.assertFalse(hasattr(module, "CBFQPController"))
+        self.assertFalse(hasattr(module, "SphereObstacle"))
+        self.assertFalse(hasattr(module, "PlateObstacle"))
 
-        self.assertFalse(reached)
+    def test_experiment_config_hides_internal_or_unused_parameters(self):
+        module = load_module()
+        cfg = module.ExperimentConfig()
+
+        self.assertFalse(hasattr(cfg, "workpiece_package_name"))
+        self.assertFalse(hasattr(cfg, "workpiece_package_alias"))
+        self.assertFalse(hasattr(cfg, "gravity"))
+        self.assertFalse(hasattr(cfg, "reference_samples"))
+        self.assertFalse(hasattr(cfg, "dq_nominal_gain"))
+        self.assertTrue(hasattr(cfg, "ignore_all_collisions"))
+        self.assertTrue(hasattr(cfg, "rrt_cartesian_margin"))
+
+    def test_experiment_config_groups_fields_by_scene_trajectory_mpc_rrt(self):
+        module = load_module()
+        field_names = list(module.ExperimentConfig.__dataclass_fields__)
+
+        self.assertLess(field_names.index("camera_distance"), field_names.index("approach_duration"))
+        self.assertLess(field_names.index("approach_duration"), field_names.index("N_mpc"))
+        self.assertLess(field_names.index("N_mpc"), field_names.index("rrt_max_iterations"))
 
 
 class PathProgressTrajectoryTests(unittest.TestCase):
