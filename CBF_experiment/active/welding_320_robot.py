@@ -1,0 +1,335 @@
+import math
+
+import numpy as np
+import pybullet as p
+from scipy.spatial.transform import Rotation
+
+from CBF_experiment.active.welding_320_common import (
+    ExperimentConfig,
+    SimulationScene,
+    _prepare_package_urdf,
+)
+
+WORKPIECE_PACKAGE_NAME = "中组立0725(1).stp.SLDASM"
+WORKPIECE_PACKAGE_ALIAS = "workpiece_scene"
+
+
+class JakaRobot:
+    """封装 9 轴机器人加载、运动学和速度指令。"""
+
+    def __init__(self, config: ExperimentConfig, scene: SimulationScene):
+        self.config = config
+        self.scene = scene
+
+        urdf_path, search_root = _prepare_package_urdf(config.urdf_path)
+        p.setAdditionalSearchPath(search_root)
+        self.body_id = p.loadURDF(
+            urdf_path,
+            basePosition=[0, 0, 0],
+            baseOrientation=[0, 0, 0, 1],
+            useFixedBase=True,
+            flags=p.URDF_USE_MATERIAL_COLORS_FROM_MTL,
+        )
+
+        self.num_joints = p.getNumJoints(self.body_id)
+        self.active_joints = []
+        self.prismatic_joints = []
+        self.revolute_joints = []
+        for joint_index in range(self.num_joints):
+            joint_info = p.getJointInfo(self.body_id, joint_index)
+            joint_type = joint_info[2]
+            if joint_type == p.JOINT_PRISMATIC:
+                self.active_joints.append(joint_index)
+                self.prismatic_joints.append(joint_index)
+            elif joint_type == p.JOINT_REVOLUTE:
+                self.active_joints.append(joint_index)
+                self.revolute_joints.append(joint_index)
+
+        self.n_pris = len(self.prismatic_joints)
+        self.n_revo = len(self.revolute_joints)
+        self.dof = len(self.active_joints)
+        self.total_dof = self.dof
+
+        self.ee_link_index = self.revolute_joints[-1]
+        self.welding_gun_base_link_index = -1
+        self.welding_gun_links = []
+        for joint_index in range(self.num_joints):
+            link_name = p.getJointInfo(self.body_id, joint_index)[12].decode()
+            if link_name == "weld_point":
+                self.ee_link_index = joint_index
+            if link_name == "welding_gun_base":
+                self.welding_gun_base_link_index = joint_index
+            if link_name in ("welding_gun_base", "weld_point"):
+                self.welding_gun_links.append(joint_index)
+
+        self.cbf_link_indices = self.prismatic_joints[2:] + list(self.revolute_joints) + self.welding_gun_links
+
+        for joint_index in self.active_joints:
+            p.changeDynamics(self.body_id, joint_index, linearDamping=0, angularDamping=0)
+            p.setJointMotorControl2(self.body_id, joint_index, p.VELOCITY_CONTROL, force=0)
+
+        self._ik_lower, self._ik_upper = [], []
+        self._ik_ranges, self._ik_rest = [], []
+        for joint_index in range(self.num_joints):
+            info = p.getJointInfo(self.body_id, joint_index)
+            lo, hi = float(info[8]), float(info[9])
+            if hi < lo:
+                self._ik_lower.append(0.0)
+                self._ik_upper.append(0.0)
+                self._ik_ranges.append(0.0)
+            else:
+                self._ik_lower.append(lo)
+                self._ik_upper.append(hi)
+                self._ik_ranges.append(hi - lo if hi > lo else 12.56)
+            self._ik_rest.append(0.0)
+
+        for axis_id, joint_index in enumerate(self.prismatic_joints):
+            if axis_id < len(config.gantry_initial_q):
+                p.resetJointState(self.body_id, joint_index, config.gantry_initial_q[axis_id])
+                self._ik_rest[joint_index] = config.gantry_initial_q[axis_id]
+
+        self.active_lower_limits = np.array([self._ik_lower[joint_index] for joint_index in self.active_joints], dtype=float)
+        self.active_upper_limits = np.array([self._ik_upper[joint_index] for joint_index in self.active_joints], dtype=float)
+        self.q_nominal = np.zeros(self.dof)
+
+    def get_joint_state(self):
+        states = p.getJointStates(self.body_id, self.active_joints)
+        return np.array([state[0] for state in states]), np.array([state[1] for state in states])
+
+    def set_joint_state(self, q, dq=None):
+        q = np.array(q, dtype=float)
+        dq_vec = np.zeros_like(q) if dq is None else np.array(dq, dtype=float)
+        for i, joint_index in enumerate(self.active_joints):
+            p.resetJointState(self.body_id, joint_index, float(q[i]), float(dq_vec[i]))
+
+    def get_ee_pose(self):
+        state = p.getLinkState(self.body_id, self.ee_link_index, computeForwardKinematics=True)
+        return np.array(state[4], dtype=float), np.array(state[5], dtype=float)
+
+    def get_link_origin(self, link_index):
+        state = p.getLinkState(self.body_id, link_index, computeForwardKinematics=True)
+        return np.array(state[4], dtype=float)
+
+    def _build_rest_poses(self, rest_poses=None):
+        rest_full = list(self._ik_rest)
+        if rest_poses is None:
+            return rest_full
+        rest_active = np.array(rest_poses, dtype=float)
+        for i, joint_index in enumerate(self.active_joints):
+            if i < len(rest_active):
+                rest_full[joint_index] = float(rest_active[i])
+        return rest_full
+
+    def calculate_ik(self, target_pos, target_quat, rest_poses=None):
+        ik = p.calculateInverseKinematics(
+            self.body_id,
+            self.ee_link_index,
+            target_pos,
+            target_quat,
+            lowerLimits=self._ik_lower,
+            upperLimits=self._ik_upper,
+            jointRanges=self._ik_ranges,
+            restPoses=self._build_rest_poses(rest_poses),
+            maxNumIterations=500,
+            residualThreshold=1e-6,
+        )
+        return np.array(ik[: self.dof], dtype=float)
+
+    def get_active_joint_limits(self) -> tuple[np.ndarray, np.ndarray]:
+        return self.active_lower_limits.copy(), self.active_upper_limits.copy()
+
+    def sample_random_configuration(self, rng: np.random.Generator) -> np.ndarray:
+        lower, upper = self.get_active_joint_limits()
+        q = np.empty(self.dof, dtype=float)
+        for idx, (lo, hi) in enumerate(zip(lower, upper)):
+            if hi <= lo:
+                q[idx] = lo
+            else:
+                q[idx] = float(rng.uniform(lo, hi))
+        return q
+
+    def evaluate_pose_candidate(self, q, target_pos, target_quat) -> dict[str, float]:
+        q_backup, dq_backup = self.get_joint_state()
+        try:
+            self.set_joint_state(q)
+            ee_pos, ee_quat = self.get_ee_pose()
+        finally:
+            self.set_joint_state(q_backup, dq_backup)
+        pos_error = float(np.linalg.norm(np.array(target_pos, dtype=float) - ee_pos))
+        rot_error = float(np.linalg.norm(
+            (Rotation.from_quat(target_quat) * Rotation.from_quat(ee_quat).inv()).as_rotvec()
+        ))
+        return {"position_error": pos_error, "orientation_error": rot_error}
+
+    def is_state_collision_free(
+        self,
+        q,
+        obstacle_body_ids: list[int] | None = None,
+        safety_margin: float | None = None,
+        link_indices: list[int] | None = None,
+        max_dist: float | None = None,
+    ) -> bool:
+        if self.config.ignore_all_collisions:
+            return True
+
+        obstacle_body_ids = [] if obstacle_body_ids is None else list(obstacle_body_ids)
+        if not obstacle_body_ids:
+            return True
+
+        safety_margin = self.config.safety_margin if safety_margin is None else float(safety_margin)
+        max_dist = max(1.0, safety_margin * 4.0) if max_dist is None else float(max_dist)
+        check_links = self.cbf_link_indices if link_indices is None else list(link_indices)
+
+        q_backup, dq_backup = self.get_joint_state()
+        try:
+            self.set_joint_state(q)
+            for obs_body_id in obstacle_body_ids:
+                for link_index in check_links:
+                    contacts = p.getClosestPoints(self.body_id, obs_body_id, max_dist, linkIndexA=link_index)
+                    if not contacts:
+                        continue
+                    best = min(contacts, key=lambda contact: contact[8])
+                    if float(best[8]) < safety_margin:
+                        return False
+        finally:
+            self.set_joint_state(q_backup, dq_backup)
+        return True
+
+    def get_link_jacobian(self, link_index, q, dq):
+        zeros = np.zeros_like(q)
+        jt, jr = p.calculateJacobian(
+            self.body_id,
+            link_index,
+            [0, 0, 0],
+            q.tolist(),
+            dq.tolist(),
+            zeros.tolist(),
+        )
+        return np.array(jt, dtype=float), np.array(jr, dtype=float)
+
+    def get_ee_jacobian(self, q, dq):
+        jt, jr = self.get_link_jacobian(self.ee_link_index, q, dq)
+        return np.vstack([jt, jr])
+
+    def get_link_cbf_row(self, link_index, normal, q, dq):
+        jt, _ = self.get_link_jacobian(link_index, q, dq)
+        return normal @ jt
+
+    def get_closest_point_to_obstacle(self, link_index, obs_body_id, max_dist=1.0):
+        contacts = p.getClosestPoints(self.body_id, obs_body_id, max_dist, linkIndexA=link_index)
+        if not contacts:
+            return None
+        best = min(contacts, key=lambda contact: contact[8])
+        pos = np.array(best[5], dtype=float)
+        dist = float(best[8])
+        normal = np.array(best[7], dtype=float)
+        nl = np.linalg.norm(normal)
+        return pos, dist, (normal / nl if nl > 1e-9 else np.array([1.0, 0.0, 0.0], dtype=float))
+
+    def get_link_cbf_row_at_point(self, link_index, world_point, normal, q, dq):
+        link_state = p.getLinkState(self.body_id, link_index, computeForwardKinematics=True)
+        inv_pos, inv_quat = p.invertTransform(link_state[4], link_state[5])
+        local_point, _ = p.multiplyTransforms(inv_pos, inv_quat, world_point.tolist(), [0, 0, 0, 1])
+        zeros = np.zeros_like(q)
+        jt, _ = p.calculateJacobian(
+            self.body_id,
+            link_index,
+            list(local_point),
+            q.tolist(),
+            dq.tolist(),
+            zeros.tolist(),
+        )
+        return normal @ np.array(jt, dtype=float)
+
+    def command_velocities(self, u_cmd):
+        lb = np.concatenate([
+            np.full(self.n_pris, -self.config.base_vel_limit),
+            np.full(self.n_revo, -self.config.dq_limit),
+        ])
+        u_clip = np.clip(u_cmd, lb, -lb)
+        q, _ = self.get_joint_state()
+        q_new = q + u_clip * self.config.dt
+        for i, joint_index in enumerate(self.active_joints):
+            p.resetJointState(self.body_id, joint_index, float(q_new[i]), float(u_clip[i]))
+
+    def get_gantry_pos(self):
+        states = p.getJointStates(self.body_id, self.prismatic_joints)
+        return np.array([state[0] for state in states])
+
+
+class WorkpieceModel:
+    """加载工件 URDF，并提供焊点坐标系查询。"""
+
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        urdf_path, search_root = _prepare_package_urdf(
+            config.workpiece_urdf_path,
+            package_name=WORKPIECE_PACKAGE_NAME,
+            package_alias=WORKPIECE_PACKAGE_ALIAS,
+            remove_collision=config.ignore_all_collisions,
+        )
+        p.setAdditionalSearchPath(search_root)
+
+        quat = p.getQuaternionFromEuler([math.radians(v) for v in config.workpiece_orientation_deg])
+        self.body_id = p.loadURDF(
+            urdf_path,
+            basePosition=config.workpiece_position,
+            baseOrientation=quat,
+            useFixedBase=True,
+            flags=p.URDF_USE_MATERIAL_COLORS_FROM_MTL,
+        )
+
+        self.link_name_to_index = {}
+        for joint_index in range(p.getNumJoints(self.body_id)):
+            link_name = p.getJointInfo(self.body_id, joint_index)[12].decode()
+            self.link_name_to_index[link_name] = joint_index
+
+        if config.ignore_all_collisions:
+            for link_index in range(-1, p.getNumJoints(self.body_id)):
+                p.setCollisionFilterGroupMask(self.body_id, link_index, 0, 0)
+
+    def get_frame_pose(self, link_name: str):
+        if link_name == "base_link":
+            pos, quat = p.getBasePositionAndOrientation(self.body_id)
+            return np.array(pos, dtype=float), np.array(quat, dtype=float)
+        if link_name not in self.link_name_to_index:
+            raise KeyError(f"未找到工件 link: {link_name}")
+        link_index = self.link_name_to_index[link_name]
+        state = p.getLinkState(self.body_id, link_index, computeForwardKinematics=True)
+        return np.array(state[4], dtype=float), np.array(state[5], dtype=float)
+
+
+class URDFObstacle:
+    """将工件 body 包装成控制器可用的 CBF 障碍物。"""
+
+    def __init__(self, body_id: int, cbf_link_indices: list[int] | None = None):
+        self._bid = body_id
+        self._cbf_links = cbf_link_indices
+
+    @property
+    def body_id(self):
+        return self._bid
+
+    @property
+    def cbf_link_indices(self):
+        return self._cbf_links
+
+    def disable_collision_with(self, robot_body_id, num_joints):
+        num_obs_links = p.getNumJoints(self.body_id)
+        for obs_link in range(-1, num_obs_links):
+            p.setCollisionFilterPair(robot_body_id, self.body_id, -1, obs_link, enableCollision=0)
+            for robot_link in range(num_joints):
+                p.setCollisionFilterPair(robot_body_id, self.body_id, robot_link, obs_link, enableCollision=0)
+
+    def update_from_slider(self):
+        return self.get_position()
+
+    def get_position(self):
+        return np.array(p.getBasePositionAndOrientation(self._bid)[0], dtype=float)
+
+    def compute_distance(self, point):
+        diff = point - self.get_position()
+        dist = np.linalg.norm(diff)
+        if dist < 1e-9:
+            return 0.0, np.array([1.0, 0.0, 0.0])
+        return dist, diff / dist
