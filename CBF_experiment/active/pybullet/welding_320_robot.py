@@ -3,7 +3,7 @@ import math
 import numpy as np
 import pybullet as p
 
-from CBF_experiment.active.welding_320_common import (
+from CBF_experiment.active.pybullet.welding_320_common import (
     ExperimentConfig,
     SimulationScene,
     _prepare_package_urdf,

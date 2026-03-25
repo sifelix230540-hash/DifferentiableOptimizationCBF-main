@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation, Slerp
 
-from CBF_experiment.active.welding_320_common import _normalize
+from CBF_experiment.active.pybullet.welding_320_common import _normalize
 
 
 class LineSlerpTrajectory:

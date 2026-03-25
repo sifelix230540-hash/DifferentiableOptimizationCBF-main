@@ -4,14 +4,36 @@ import time
 import numpy as np
 import pybullet as p
 
-from CBF_experiment.active.welding_320_common import (
+from CBF_experiment.active.pybullet.welding_320_common import (
     ExperimentConfig,
     SimulationScene,
     build_weld_reference_quat,
 )
-from CBF_experiment.active.welding_320_control import CartesianRRTNominalPlanner, create_controller
-from CBF_experiment.active.welding_320_robot import JakaRobot, URDFObstacle, WorkpieceModel
-from CBF_experiment.active.welding_320_trajectory import PathProgressTrajectory
+from CBF_experiment.active.pybullet.welding_320_control import CartesianRRTNominalPlanner, create_controller
+from CBF_experiment.active.pybullet.welding_320_robot import JakaRobot, URDFObstacle, WorkpieceModel
+from CBF_experiment.active.pybullet.welding_320_trajectory import PathProgressTrajectory
+
+
+def format_step_status_line(sim_step: int, seg_idx: int, progress_exec: float, progress_end: float, gantry_pos, info: dict) -> str:
+    gp = np.array(gantry_pos, dtype=float)
+    stall_active = bool(info.get("dynamic_nominal_stall_active", False))
+    return (
+        f"[step {sim_step:4d}] "
+        f"seg={seg_idx} "
+        f"s={progress_exec:.3f}/{progress_end:.3f} "
+        f"gantry=({gp[0]:.3f},{gp[1]:.3f},{gp[2]:.3f}) "
+        f"err={info['tracking_error']*1000:.1f}mm "
+        f"rot={math.degrees(info.get('orientation_error', 0.0)):.1f}deg "
+        f"lag={info['lag_error']*1000:.1f}mm "
+        f"cont={info['contour_error']*1000:.1f}mm "
+        f"h={info['min_h']*1000:.1f}mm "
+        f"stall={'Y' if stall_active else 'N'} "
+        f"w={info.get('dynamic_nominal_weight', 0.0):.2f} "
+        f"pg={info.get('dynamic_nominal_progress_gain', 0.0)*1000:.1f}mm "
+        f"em={info.get('dynamic_nominal_exec_motion', 0.0)*1000:.1f}mm "
+        f"off={info.get('dynamic_reference_offset_norm', 0.0)*1000:.1f}mm "
+        f"{info['status']}"
+    )
 
 
 class AvoidanceExperiment:
@@ -196,18 +218,14 @@ class AvoidanceExperiment:
                 if self.sim_step % self.config.print_every == 0:
                     gp = self.robot.get_gantry_pos()
                     seg_idx = min(self.trajectory.current_segment_index(progress_exec) + 1, len(self.trajectory.segments))
-                    print(
-                        f"[step {self.sim_step:4d}] "
-                        f"seg={seg_idx} "
-                        f"s={progress_exec:.3f}/{self.trajectory.progress_end:.3f} "
-                        f"gantry=({gp[0]:.3f},{gp[1]:.3f},{gp[2]:.3f}) "
-                        f"err={info['tracking_error']*1000:.1f}mm "
-                        f"rot={math.degrees(info.get('orientation_error', 0.0)):.1f}deg "
-                        f"lag={info['lag_error']*1000:.1f}mm "
-                        f"cont={info['contour_error']*1000:.1f}mm "
-                        f"h={info['min_h']*1000:.1f}mm "
-                        f"{info['status']}"
-                    )
+                    print(format_step_status_line(
+                        sim_step=self.sim_step,
+                        seg_idx=seg_idx,
+                        progress_exec=progress_exec,
+                        progress_end=self.trajectory.progress_end,
+                        gantry_pos=gp,
+                        info=info,
+                    ))
                 self.sim_step += 1
                 time.sleep(self.config.dt)
 

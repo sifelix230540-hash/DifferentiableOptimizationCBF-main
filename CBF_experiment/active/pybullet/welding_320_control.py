@@ -1,10 +1,12 @@
+from collections import deque
+
 import numpy as np
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation, Slerp
 
-from CBF_experiment.active.welding_320_common import ExperimentConfig, quaternion_error_rotvec
-from CBF_experiment.active.welding_320_robot import JakaRobot
-from CBF_experiment.active.welding_320_trajectory import JointWaypointTrajectory, PiecewiseLineSlerpTrajectory
+from CBF_experiment.active.pybullet.welding_320_common import ExperimentConfig, quaternion_error_rotvec
+from CBF_experiment.active.pybullet.welding_320_robot import JakaRobot
+from CBF_experiment.active.pybullet.welding_320_trajectory import JointWaypointTrajectory, PiecewiseLineSlerpTrajectory
 
 try:
     import pybullet_planning as pp
@@ -237,6 +239,155 @@ class CartesianRRTNominalPlanner:
         return PiecewiseLineSlerpTrajectory([seg_1, seg_2, seg_3])
 
 
+class DynamicNominalReferenceMixer:
+    """在停滞时沿已执行避障轨迹外推，并与名义参考做动态混合。"""
+
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        self._ee_history: deque[np.ndarray] = deque(maxlen=max(int(config.dynamic_nominal_history_size), 2))
+        self._progress_history: deque[float] = deque(maxlen=max(int(config.dynamic_nominal_history_size), 2))
+        self._stall_active = False
+        self._locked_escape_dir: np.ndarray | None = None
+
+    @staticmethod
+    def _safe_normalize(vec: np.ndarray) -> np.ndarray | None:
+        norm = float(np.linalg.norm(vec))
+        if norm < 1e-9:
+            return None
+        return np.array(vec, dtype=float) / norm
+
+    @staticmethod
+    def _project_to_plane(vec: np.ndarray, normal: np.ndarray) -> np.ndarray:
+        return np.array(vec, dtype=float) - float(np.dot(vec, normal)) * normal
+
+    def _build_escape_dir(
+        self,
+        exec_delta: np.ndarray,
+        ee_pos: np.ndarray,
+        nominal_positions: list[np.ndarray],
+        normal: np.ndarray,
+    ) -> np.ndarray:
+        tangent = self._project_to_plane(exec_delta, normal)
+        tangent = self._safe_normalize(tangent)
+        if tangent is None and nominal_positions:
+            nominal_delta = nominal_positions[0] - ee_pos
+            tangent = self._safe_normalize(self._project_to_plane(nominal_delta, normal))
+        if tangent is None:
+            tangent = normal
+
+        escape_dir = self._safe_normalize(tangent + self.config.dynamic_nominal_normal_gain * normal)
+        if escape_dir is None:
+            escape_dir = normal
+        return escape_dir
+
+    def mix_positions(
+        self,
+        ee_pos: np.ndarray,
+        current_progress: float,
+        nominal_positions: list[np.ndarray],
+        signed_dist: float | None,
+        obstacle_normal: np.ndarray | None,
+    ) -> tuple[list[np.ndarray], dict]:
+        ee_pos = np.array(ee_pos, dtype=float)
+        nominal_positions = [np.array(pos, dtype=float) for pos in nominal_positions]
+        self._ee_history.append(ee_pos.copy())
+        self._progress_history.append(float(current_progress))
+
+        progress_gain = (
+            float(self._progress_history[-1] - self._progress_history[0]) if len(self._progress_history) >= 2 else 0.0
+        )
+        exec_delta = self._ee_history[-1] - self._ee_history[0] if len(self._ee_history) >= 2 else np.zeros(3)
+        exec_motion = float(np.linalg.norm(exec_delta))
+        tracking_error = float(np.linalg.norm(nominal_positions[0] - ee_pos)) if nominal_positions else 0.0
+        info = {
+            "dynamic_nominal_weight": 0.0,
+            "dynamic_nominal_signed_dist": float("inf") if signed_dist is None else float(signed_dist),
+            "dynamic_reference_offset_norm": 0.0,
+            "dynamic_nominal_progress_gain": progress_gain,
+            "dynamic_nominal_exec_motion": exec_motion,
+            "dynamic_nominal_tracking_error": tracking_error,
+            "dynamic_nominal_stall_active": False,
+        }
+        if (not self.config.use_dynamic_nominal_reference) or signed_dist is None or obstacle_normal is None:
+            return nominal_positions, info
+
+        normal = np.array(obstacle_normal, dtype=float)
+        normal = self._safe_normalize(normal)
+        if normal is None:
+            return nominal_positions, info
+
+        activation_distance = max(0.10, self.config.safety_margin * 5.0)
+        signed_dist = float(signed_dist)
+        if signed_dist >= activation_distance:
+            return nominal_positions, info
+
+        if len(self._ee_history) < self._ee_history.maxlen or len(self._progress_history) < self._progress_history.maxlen:
+            return nominal_positions, info
+
+        is_stall_candidate = (
+            progress_gain < self.config.dynamic_nominal_progress_epsilon
+            and exec_motion > self.config.dynamic_nominal_exec_motion_trigger
+            and tracking_error > self.config.dynamic_nominal_tracking_error_trigger
+        )
+        if self._stall_active:
+            should_release = (
+                signed_dist >= activation_distance
+                or progress_gain > self.config.dynamic_nominal_release_progress
+            )
+            if should_release:
+                self._stall_active = False
+                self._locked_escape_dir = None
+
+        if not self._stall_active and not is_stall_candidate:
+            return nominal_positions, info
+
+        if not self._stall_active:
+            self._stall_active = True
+            self._locked_escape_dir = self._build_escape_dir(exec_delta, ee_pos, nominal_positions, normal)
+
+        escape_dir = normal if self._locked_escape_dir is None else self._locked_escape_dir
+
+        clearance_ratio = float(
+            np.clip(
+                (activation_distance - signed_dist) / max(activation_distance - self.config.safety_margin, 1e-6),
+                0.0,
+                1.0,
+            )
+        )
+        stall_ratio = float(
+            np.clip(
+                1.0 - progress_gain / max(self.config.dynamic_nominal_progress_epsilon, 1e-6),
+                0.0,
+                1.0,
+            )
+        )
+        weight = min(clearance_ratio * stall_ratio, self.config.dynamic_nominal_max_weight)
+        normal_push = max(activation_distance - signed_dist, 0.0) * normal
+
+        escape_positions: list[np.ndarray] = []
+        accumulated = 0.0
+        anchor = ee_pos
+        for nominal_pos in nominal_positions:
+            step_len = max(float(np.linalg.norm(nominal_pos - anchor)), self.config.mpc_progress_step_min)
+            accumulated += step_len
+            escape_positions.append(
+                nominal_pos + accumulated * self.config.dynamic_nominal_escape_distance * escape_dir + normal_push
+            )
+            anchor = nominal_pos
+
+        mixed_positions = [
+            (1.0 - weight) * nominal_pos + weight * escape_pos
+            for nominal_pos, escape_pos in zip(nominal_positions, escape_positions)
+        ]
+        offset = mixed_positions[0] - nominal_positions[0] if mixed_positions else np.zeros(3)
+        info.update({
+            "dynamic_nominal_weight": weight,
+            "dynamic_nominal_stall_active": self._stall_active,
+            "dynamic_reference_offset_norm": float(np.linalg.norm(offset)),
+        })
+        return mixed_positions, info
+
+
 class MPCDCBFController:
     """按路径进度采样参考并求解 MPC-DCBF 控制量。"""
 
@@ -246,6 +397,7 @@ class MPCDCBFController:
         self.n = robot.total_dof
         self.N = config.N_mpc
         self.trajectory = trajectory
+        self.reference_mixer = DynamicNominalReferenceMixer(config)
         self._prev_sol: np.ndarray | None = None
         self._cached_u: np.ndarray | None = None
         self._cached_info: dict | None = None
@@ -323,6 +475,30 @@ class MPCDCBFController:
 
         return h_mat, f_vec, a_cbf, b_cbf
 
+    def _get_dynamic_nominal_hint(self, obstacles):
+        if self.config.ignore_all_collisions or not self.config.use_dynamic_nominal_reference:
+            return None, None
+
+        best_signed_dist = None
+        best_normal = None
+        max_dist = max(1.0, self.config.safety_margin * 10.0)
+        for obs in obstacles:
+            obs_body_id = getattr(obs, "body_id", -1)
+            if obs_body_id < 0:
+                continue
+            closest = self.robot.get_closest_point_to_obstacle(
+                self.robot.ee_link_index,
+                obs_body_id,
+                max_dist=max_dist,
+            )
+            if closest is None:
+                continue
+            _, signed_dist, normal = closest
+            if best_signed_dist is None or signed_dist < best_signed_dist:
+                best_signed_dist = float(signed_dist)
+                best_normal = np.array(normal, dtype=float)
+        return best_signed_dist, best_normal
+
     def solve(
         self,
         q,
@@ -355,6 +531,19 @@ class MPCDCBFController:
             )
             ref_positions.append(pk)
             ref_rotvecs.append(quaternion_error_rotvec(ee_quat, qk))
+
+        dynamic_signed_dist, dynamic_normal = self._get_dynamic_nominal_hint(obstacles)
+        mixed_refs, dynamic_info = self.reference_mixer.mix_positions(
+            ee_pos=np.array(ee_pos, dtype=float),
+            current_progress=float(current_progress),
+            nominal_positions=[np.array(ref_pos, dtype=float)] + ref_positions,
+            signed_dist=dynamic_signed_dist,
+            obstacle_normal=dynamic_normal,
+        )
+        ref_pos = mixed_refs[0]
+        ref_positions = mixed_refs[1:]
+        if ref_positions:
+            ref_lin_vel = (ref_positions[0] - ref_pos) / max(cfg.mpc_dt, 1e-6)
 
         grad_rows, h_vals = self._build_cbf_data(q, dq, obstacles)
         min_h = float(np.min(h_vals)) if h_vals else 1.0
@@ -411,6 +600,7 @@ class MPCDCBFController:
             "tracking_error": float(np.linalg.norm(pos_err)),
             "orientation_error": float(np.linalg.norm(rot_err)),
             "progress_step": float(ds_ref),
+            **dynamic_info,
         }
         self._cached_u = u_cmd
         self._cached_info = info

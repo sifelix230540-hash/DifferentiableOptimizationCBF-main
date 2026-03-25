@@ -6,7 +6,7 @@ import numpy as np
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MODULE_PATH = ROOT / "CBF_experiment" / "active" / "3_20_9axis_3d_mpc_cbf_experiment.py"
+MODULE_PATH = ROOT / "CBF_experiment" / "active" / "pybullet" / "3_20_9axis_3d_mpc_cbf_experiment.py"
 
 
 def load_module():
