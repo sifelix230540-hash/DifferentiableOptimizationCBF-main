@@ -35,6 +35,22 @@ def sample_cloud_for_visualization(
     return points_arr[indices], normals_arr[indices]
 
 
+def apply_contains_sign_to_distance(
+    mesh,
+    point_local: np.ndarray,
+    unsigned_dist: float,
+    fallback_signed_dist: float,
+) -> float:
+    if mesh is None:
+        return float(fallback_signed_dist)
+    try:
+        inside = bool(mesh.contains(np.asarray(point_local, dtype=float).reshape(1, 3))[0])
+    except Exception:
+        return float(fallback_signed_dist)
+    magnitude = abs(float(unsigned_dist))
+    return -magnitude if inside else magnitude
+
+
 def compute_world_surface(
     local_points: np.ndarray,
     local_normals: np.ndarray,
@@ -150,6 +166,7 @@ class SurfaceLinkCloud:
     link_name: str
     local_points: np.ndarray
     local_normals: np.ndarray
+    local_mesh: object | None = None
     device_points: object | None = None
     device_normals: object | None = None
 
@@ -216,6 +233,17 @@ class SurfaceDistanceEngine:
             return trimesh.creation.capsule(radius=dims[1], height=dims[0], count=[8, 16])
         raise ValueError(f"不支持的碰撞几何类型: {geom_type}")
 
+    def _build_shape_local_mesh(self, shape_data):
+        mesh = self._load_shape_mesh(shape_data).copy()
+        local_pos = np.asarray(shape_data[5], dtype=float)
+        local_quat = np.asarray(shape_data[6], dtype=float)
+        rot = np.array(p.getMatrixFromQuaternion(local_quat.tolist()), dtype=float).reshape(3, 3)
+        transform = np.eye(4, dtype=float)
+        transform[:3, :3] = rot
+        transform[:3, 3] = local_pos
+        mesh.apply_transform(transform)
+        return mesh
+
     def _sample_shape_surface(self, shape_data) -> tuple[np.ndarray, np.ndarray]:
         trimesh = self._import_trimesh()
         mesh = self._load_shape_mesh(shape_data)
@@ -253,20 +281,33 @@ class SurfaceDistanceEngine:
                 continue
             shape_points = []
             shape_normals = []
+            shape_meshes = []
             for shape_data in shape_datas:
                 pts, normals = self._sample_shape_surface(shape_data)
                 shape_points.append(pts)
                 shape_normals.append(normals)
+                try:
+                    shape_meshes.append(self._build_shape_local_mesh(shape_data))
+                except Exception:
+                    pass
             if not shape_points:
                 continue
             local_points = np.vstack(shape_points)
             local_normals = _normalize_rows(np.vstack(shape_normals))
+            local_mesh = None
+            if shape_meshes:
+                trimesh = self._import_trimesh()
+                try:
+                    local_mesh = trimesh.util.concatenate(shape_meshes)
+                except Exception:
+                    local_mesh = shape_meshes[0]
             cloud = SurfaceLinkCloud(
                 body_id=int(body_id),
                 link_index=int(link_index),
                 link_name=self._get_body_link_name(body_id, link_index),
                 local_points=local_points,
                 local_normals=local_normals,
+                local_mesh=local_mesh,
             )
             if self._gpu_enabled:
                 cloud.device_points = self._torch.as_tensor(local_points, dtype=self._torch.float32, device="cuda")
@@ -302,6 +343,9 @@ class SurfaceDistanceEngine:
             "link_name": cloud.link_name,
             "points": world_points,
             "normals": world_normals,
+            "local_mesh": cloud.local_mesh,
+            "world_pos": np.asarray(world_pos, dtype=float),
+            "world_quat": np.asarray(world_quat, dtype=float),
         }
         if self._gpu_enabled:
             payload["device_points"] = self._torch.as_tensor(world_points, dtype=self._torch.float32, device="cuda")
@@ -352,6 +396,15 @@ class SurfaceDistanceEngine:
         delta = np.maximum(0.0, np.maximum(min_a - max_b, min_b - max_a))
         return float(np.linalg.norm(delta))
 
+    @staticmethod
+    def _transform_world_point_to_local(point_world: np.ndarray, world_pos: np.ndarray, world_quat: np.ndarray) -> np.ndarray:
+        inv_pos, inv_quat = p.invertTransform(
+            np.asarray(world_pos, dtype=float).tolist(),
+            np.asarray(world_quat, dtype=float).tolist(),
+        )
+        point_local, _ = p.multiplyTransforms(inv_pos, inv_quat, np.asarray(point_world, dtype=float).tolist(), [0, 0, 0, 1])
+        return np.asarray(point_local, dtype=float)
+
     def query_link_to_body(
         self,
         robot_body_id: int,
@@ -391,6 +444,17 @@ class SurfaceDistanceEngine:
                     obs_cloud["points"],
                     obs_cloud["normals"],
                 )
+            point_on_obstacle_local = self._transform_world_point_to_local(
+                pair["point_on_obstacle"],
+                robot_cloud["world_pos"],
+                robot_cloud["world_quat"],
+            )
+            pair["signed_dist"] = apply_contains_sign_to_distance(
+                mesh=robot_cloud.get("local_mesh"),
+                point_local=point_on_obstacle_local,
+                unsigned_dist=pair["euclidean_dist"],
+                fallback_signed_dist=pair["signed_dist"],
+            )
             pair.update({
                 "robot_link_index": int(robot_link_index),
                 "robot_link_name": str(robot_cloud["link_name"]),

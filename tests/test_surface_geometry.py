@@ -4,6 +4,7 @@ import numpy as np
 import pybullet as p
 
 from CBF_experiment.active.pybullet.welding_320_geometry import (
+    apply_contains_sign_to_distance,
     compute_world_surface,
     find_closest_surface_pair_cpu,
     sample_cloud_for_visualization,
@@ -62,6 +63,32 @@ class SurfaceGeometryQueryTests(unittest.TestCase):
 
         self.assertLess(result["signed_dist"], 0.0)
         self.assertAlmostEqual(result["euclidean_dist"], 0.3, places=6)
+
+    def test_apply_contains_sign_to_distance_marks_outside_point_positive(self):
+        import trimesh
+
+        mesh = trimesh.creation.box(extents=[1.0, 1.0, 1.0])
+        signed_dist = apply_contains_sign_to_distance(
+            mesh=mesh,
+            point_local=np.array([1.0, 0.0, 0.0], dtype=float),
+            unsigned_dist=0.25,
+            fallback_signed_dist=-0.25,
+        )
+
+        self.assertAlmostEqual(signed_dist, 0.25, places=6)
+
+    def test_apply_contains_sign_to_distance_marks_inside_point_negative(self):
+        import trimesh
+
+        mesh = trimesh.creation.box(extents=[1.0, 1.0, 1.0])
+        signed_dist = apply_contains_sign_to_distance(
+            mesh=mesh,
+            point_local=np.array([0.0, 0.0, 0.0], dtype=float),
+            unsigned_dist=0.25,
+            fallback_signed_dist=0.25,
+        )
+
+        self.assertAlmostEqual(signed_dist, -0.25, places=6)
 
 
 class SurfaceVisualizationSamplingTests(unittest.TestCase):
