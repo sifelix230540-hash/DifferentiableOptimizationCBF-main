@@ -43,7 +43,7 @@ class ExperimentConfig:
     camera_pitch: float = -26.0
     camera_target: tuple[float, float, float] = (0.30, 0.20, 0.60)
     print_every: int = 120
-    show_collision_meshes: bool = True
+    show_collision_meshes: bool = False
     show_cbf_contacts: bool = True
     cbf_contact_normal_length: float = 0.04
     cbf_contact_cross_size: float = 0.006
@@ -52,9 +52,21 @@ class ExperimentConfig:
     surface_target_density: float = 300.0
     surface_min_samples: int = 96
     surface_max_samples: int = 768
+    robot_surface_target_density: float = 300.0
+    robot_surface_min_samples: int = 96
+    robot_surface_max_samples: int = 768
+    robot_rear_six_surface_target_density: float = 1800.0
+    robot_rear_six_surface_min_samples: int = 384
+    robot_rear_six_surface_max_samples: int = 4096
+    obstacle_surface_target_density: float = 1200.0
+    obstacle_surface_min_samples: int = 256
+    obstacle_surface_max_samples: int = 4096
     surface_gpu_chunk_size: int = 2048
     show_surface_samples: bool = True
     surface_visual_max_points_per_link: int = 48
+    robot_surface_visual_max_points_per_link: int = 48
+    robot_rear_six_visual_max_points_per_link: int = 240
+    obstacle_surface_visual_max_points_per_link: int = 240
     surface_visual_point_size: int = 4
     surface_visual_update_interval: int = 6
     ee_trace_lifetime: float = 2.0
@@ -72,9 +84,9 @@ class ExperimentConfig:
     position_gain: float = 1.0
     orientation_gain: float = 3.0
     use_mesh_cbf: bool = True
-    safety_margin: float = 0.001
+    safety_margin: float = 0.05
     q_nominal_tracking: float = 0.02
-    use_dynamic_nominal_reference: bool = False
+    use_dynamic_nominal_reference: bool = True
     dynamic_nominal_history_size: int = 15
     dynamic_nominal_progress_epsilon: float = 0.03
     dynamic_nominal_exec_motion_trigger: float = 1e-4
@@ -86,12 +98,12 @@ class ExperimentConfig:
     progress_end_tolerance: float = 0.02
 
     # MPC
-    N_mpc: int = 5
+    N_mpc: int = 20
     mpc_dt: float = 0.04
     gamma_dcbf: float = 0.5
-    mpc_tracking_weight: float = 5.0
+    mpc_tracking_weight: float = 0.5
     mpc_orientation_tracking_weight: float = 0.2
-    mpc_terminal_orientation_window: float = 0.20
+    mpc_terminal_orientation_window: float = 1.0
     mpc_control_weight: float = 0.2
     mpc_smooth_weight: float = 0.2
     mpc_replan_steps: int = 6

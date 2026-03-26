@@ -5,10 +5,14 @@ import pybullet as p
 
 from CBF_experiment.active.pybullet.welding_320_geometry import (
     apply_contains_sign_to_distance,
+    compute_surface_sample_count,
     compute_world_surface,
     find_closest_surface_pair_cpu,
+    resolve_surface_sampling_params,
+    resolve_surface_visual_max_points,
     sample_cloud_for_visualization,
 )
+from CBF_experiment.active.pybullet.welding_320_common import ExperimentConfig
 
 
 class SurfaceGeometryTransformTests(unittest.TestCase):
@@ -102,6 +106,35 @@ class SurfaceVisualizationSamplingTests(unittest.TestCase):
         self.assertEqual(sampled_normals.shape, (4, 3))
         self.assertTrue(np.allclose(sampled_normals, [[0.0, 0.0, 1.0]] * 4))
         self.assertTrue(np.allclose(sampled_points[:, 0], [0.0, 3.0, 6.0, 9.0]))
+
+    def test_obstacle_role_uses_higher_sampling_and_visual_density(self):
+        cfg = ExperimentConfig()
+
+        robot_density, robot_min_samples, robot_max_samples = resolve_surface_sampling_params(cfg, role="robot")
+        obstacle_density, obstacle_min_samples, obstacle_max_samples = resolve_surface_sampling_params(cfg, role="obstacle")
+
+        self.assertGreater(obstacle_density, robot_density)
+        self.assertGreater(obstacle_min_samples, robot_min_samples)
+        self.assertGreater(obstacle_max_samples, robot_max_samples)
+        self.assertGreater(resolve_surface_visual_max_points(cfg, role="obstacle"), resolve_surface_visual_max_points(cfg, role="robot"))
+
+    def test_robot_rear_six_role_uses_higher_sampling_and_visual_density_than_robot(self):
+        cfg = ExperimentConfig()
+
+        robot_density, robot_min_samples, robot_max_samples = resolve_surface_sampling_params(cfg, role="robot")
+        rear_density, rear_min_samples, rear_max_samples = resolve_surface_sampling_params(cfg, role="robot_rear_six")
+
+        self.assertGreater(rear_density, robot_density)
+        self.assertGreater(rear_min_samples, robot_min_samples)
+        self.assertGreater(rear_max_samples, robot_max_samples)
+        self.assertGreater(resolve_surface_visual_max_points(cfg, role="robot_rear_six"), resolve_surface_visual_max_points(cfg, role="robot"))
+
+    def test_compute_surface_sample_count_respects_density_and_limits(self):
+        robot_count = compute_surface_sample_count(area=1.0, density=300.0, min_samples=96, max_samples=768)
+        obstacle_count = compute_surface_sample_count(area=1.0, density=1200.0, min_samples=256, max_samples=4096)
+
+        self.assertEqual(robot_count, 300)
+        self.assertEqual(obstacle_count, 1200)
 
 
 if __name__ == "__main__":

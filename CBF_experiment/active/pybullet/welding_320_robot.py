@@ -65,6 +65,7 @@ class JakaRobot:
                 self.welding_gun_links.append(joint_index)
 
         self.cbf_link_indices = self.prismatic_joints[2:] + list(self.revolute_joints) + self.welding_gun_links
+        self.rear_six_link_indices = [int(link_index) for link_index in self.revolute_joints]
 
         for joint_index in self.active_joints:
             p.changeDynamics(self.body_id, joint_index, linearDamping=0, angularDamping=0)
@@ -92,7 +93,16 @@ class JakaRobot:
 
         self.q_nominal = np.zeros(self.dof)
         self._surface_engine = SurfaceDistanceEngine(config)
-        self._surface_engine.register_body(self.body_id, link_indices=self.cbf_link_indices)
+        robot_link_roles = {
+            int(link_index): "robot_rear_six" if int(link_index) in self.rear_six_link_indices else "robot"
+            for link_index in self.cbf_link_indices
+        }
+        self._surface_engine.register_body(
+            self.body_id,
+            link_indices=self.cbf_link_indices,
+            role="robot",
+            link_role_map=robot_link_roles,
+        )
         self._surface_obstacle_links: dict[int, list[int] | None] = {}
 
     def get_link_name(self, link_index: int) -> str:
@@ -101,7 +111,7 @@ class JakaRobot:
     def register_surface_obstacle(self, body_id: int, link_indices: list[int] | None = None):
         normalized = None if link_indices is None else [int(li) for li in link_indices]
         self._surface_obstacle_links[int(body_id)] = normalized
-        self._surface_engine.register_body(int(body_id), link_indices=normalized)
+        self._surface_engine.register_body(int(body_id), link_indices=normalized, role="obstacle")
 
     def get_surface_visualization_clouds(
         self,

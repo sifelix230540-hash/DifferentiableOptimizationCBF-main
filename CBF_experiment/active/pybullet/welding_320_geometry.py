@@ -35,6 +35,71 @@ def sample_cloud_for_visualization(
     return points_arr[indices], normals_arr[indices]
 
 
+def compute_surface_sample_count(area: float, density: float, min_samples: int, max_samples: int) -> int:
+    area_val = float(area)
+    density_val = float(density)
+    min_val = int(min_samples)
+    max_val = int(max_samples)
+    count_by_density = int(area_val * density_val) if area_val > 0.0 else min_val
+    return max(min_val, min(max_val, count_by_density))
+
+
+def resolve_surface_sampling_params(config, role: str) -> tuple[float, int, int]:
+    role_name = str(role or "default").lower()
+    if role_name == "robot_rear_six":
+        return (
+            float(getattr(config, "robot_rear_six_surface_target_density", getattr(config, "robot_surface_target_density", getattr(config, "surface_target_density", 400.0)))),
+            int(getattr(config, "robot_rear_six_surface_min_samples", getattr(config, "robot_surface_min_samples", getattr(config, "surface_min_samples", 64)))),
+            int(getattr(config, "robot_rear_six_surface_max_samples", getattr(config, "robot_surface_max_samples", getattr(config, "surface_max_samples", 1024)))),
+        )
+    if role_name == "obstacle":
+        return (
+            float(getattr(config, "obstacle_surface_target_density", getattr(config, "surface_target_density", 400.0))),
+            int(getattr(config, "obstacle_surface_min_samples", getattr(config, "surface_min_samples", 64))),
+            int(getattr(config, "obstacle_surface_max_samples", getattr(config, "surface_max_samples", 1024))),
+        )
+    if role_name == "robot":
+        return (
+            float(getattr(config, "robot_surface_target_density", getattr(config, "surface_target_density", 400.0))),
+            int(getattr(config, "robot_surface_min_samples", getattr(config, "surface_min_samples", 64))),
+            int(getattr(config, "robot_surface_max_samples", getattr(config, "surface_max_samples", 1024))),
+        )
+    return (
+        float(getattr(config, "surface_target_density", 400.0)),
+        int(getattr(config, "surface_min_samples", 64)),
+        int(getattr(config, "surface_max_samples", 1024)),
+    )
+
+
+def resolve_surface_visual_max_points(config, role: str) -> int:
+    role_name = str(role or "default").lower()
+    if role_name == "robot_rear_six":
+        return int(
+            getattr(
+                config,
+                "robot_rear_six_visual_max_points_per_link",
+                getattr(config, "robot_surface_visual_max_points_per_link", getattr(config, "surface_visual_max_points_per_link", 48)),
+            )
+        )
+    if role_name == "obstacle":
+        return int(
+            getattr(
+                config,
+                "obstacle_surface_visual_max_points_per_link",
+                getattr(config, "surface_visual_max_points_per_link", 48),
+            )
+        )
+    if role_name == "robot":
+        return int(
+            getattr(
+                config,
+                "robot_surface_visual_max_points_per_link",
+                getattr(config, "surface_visual_max_points_per_link", 48),
+            )
+        )
+    return int(getattr(config, "surface_visual_max_points_per_link", 48))
+
+
 def apply_contains_sign_to_distance(
     mesh,
     point_local: np.ndarray,
@@ -166,6 +231,7 @@ class SurfaceLinkCloud:
     link_name: str
     local_points: np.ndarray
     local_normals: np.ndarray
+    role: str = "default"
     local_mesh: object | None = None
     device_points: object | None = None
     device_normals: object | None = None
@@ -175,6 +241,7 @@ class SurfaceDistanceEngine:
     def __init__(self, config):
         self.config = config
         self._body_clouds: dict[int, dict[int, SurfaceLinkCloud]] = {}
+        self._body_roles: dict[int, str] = {}
         self._world_cache: dict[tuple[int, int], dict] = {}
         self._torch = None
         self._gpu_enabled = False
@@ -244,7 +311,7 @@ class SurfaceDistanceEngine:
         mesh.apply_transform(transform)
         return mesh
 
-    def _sample_shape_surface(self, shape_data) -> tuple[np.ndarray, np.ndarray]:
+    def _sample_shape_surface(self, shape_data, role: str = "default") -> tuple[np.ndarray, np.ndarray]:
         trimesh = self._import_trimesh()
         mesh = self._load_shape_mesh(shape_data)
         mesh = mesh.copy()
@@ -254,11 +321,8 @@ class SurfaceDistanceEngine:
             mesh.fix_normals()
 
         area = float(getattr(mesh, "area", 0.0))
-        density = float(getattr(self.config, "surface_target_density", 400.0))
-        min_samples = int(getattr(self.config, "surface_min_samples", 64))
-        max_samples = int(getattr(self.config, "surface_max_samples", 1024))
-        count_by_density = int(area * density) if area > 0.0 else min_samples
-        count = max(min_samples, min(max_samples, count_by_density))
+        density, min_samples, max_samples = resolve_surface_sampling_params(self.config, role=role)
+        count = compute_surface_sample_count(area, density, min_samples, max_samples)
 
         points_local, face_indices = trimesh.sample.sample_surface(mesh, count)
         normals_local = mesh.face_normals[face_indices]
@@ -270,12 +334,20 @@ class SurfaceDistanceEngine:
         normals = _normalize_rows((rot @ normals_local.T).T)
         return np.asarray(points, dtype=float), np.asarray(normals, dtype=float)
 
-    def register_body(self, body_id: int, link_indices: list[int] | None = None):
+    def register_body(
+        self,
+        body_id: int,
+        link_indices: list[int] | None = None,
+        role: str = "default",
+        link_role_map: dict[int, str] | None = None,
+    ):
         selected = None if link_indices is None else {int(li) for li in link_indices}
         body_clouds: dict[int, SurfaceLinkCloud] = {}
+        role_name = str(role or "default").lower()
         for link_index in range(-1, p.getNumJoints(body_id)):
             if selected is not None and link_index not in selected:
                 continue
+            current_role = str((link_role_map or {}).get(int(link_index), role_name)).lower()
             shape_datas = p.getCollisionShapeData(body_id, link_index)
             if not shape_datas:
                 continue
@@ -283,7 +355,7 @@ class SurfaceDistanceEngine:
             shape_normals = []
             shape_meshes = []
             for shape_data in shape_datas:
-                pts, normals = self._sample_shape_surface(shape_data)
+                pts, normals = self._sample_shape_surface(shape_data, role=current_role)
                 shape_points.append(pts)
                 shape_normals.append(normals)
                 try:
@@ -307,6 +379,7 @@ class SurfaceDistanceEngine:
                 link_name=self._get_body_link_name(body_id, link_index),
                 local_points=local_points,
                 local_normals=local_normals,
+                role=current_role,
                 local_mesh=local_mesh,
             )
             if self._gpu_enabled:
@@ -314,6 +387,7 @@ class SurfaceDistanceEngine:
                 cloud.device_normals = self._torch.as_tensor(local_normals, dtype=self._torch.float32, device="cuda")
             body_clouds[int(link_index)] = cloud
         self._body_clouds[int(body_id)] = body_clouds
+        self._body_roles[int(body_id)] = role_name
         self.clear_world_cache()
 
     def _get_world_cloud(self, body_id: int, link_index: int) -> dict | None:
@@ -366,11 +440,15 @@ class SurfaceDistanceEngine:
             else list(available.keys())
         )
         clouds = []
-        point_limit = int(max_points_per_link or getattr(self.config, "surface_visual_max_points_per_link", 48))
         for link_index in candidate_links:
             world_cloud = self._get_world_cloud(int(body_id), int(link_index))
             if world_cloud is None:
                 continue
+            point_limit = (
+                int(max_points_per_link)
+                if max_points_per_link is not None
+                else resolve_surface_visual_max_points(self.config, role=getattr(available.get(int(link_index)), "role", self._body_roles.get(int(body_id), "default")))
+            )
             points, normals = sample_cloud_for_visualization(
                 world_cloud["points"],
                 world_cloud["normals"],

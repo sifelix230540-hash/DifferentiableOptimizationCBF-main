@@ -259,11 +259,10 @@ class AvoidanceExperiment:
         print("===== 焊接实验 (控制器: mpc_dcbf, 障碍: workpiece_only) =====")
 
     def _build_surface_cloud_specs(self) -> list[dict]:
-        max_points = int(self.config.surface_visual_max_points_per_link)
         robot_clouds = self.robot.get_surface_visualization_clouds(
             self.robot.body_id,
             link_indices=self.robot.cbf_link_indices,
-            max_points_per_link=max_points,
+            max_points_per_link=None,
         )
         for cloud in robot_clouds:
             cloud["color"] = [1.0, 0.35, 0.05]
@@ -273,7 +272,7 @@ class AvoidanceExperiment:
             obstacle_clouds = self.robot.get_surface_visualization_clouds(
                 self.workpiece.body_id,
                 link_indices=None,
-                max_points_per_link=max_points,
+                max_points_per_link=None,
             )
             for cloud in obstacle_clouds:
                 cloud["color"] = [0.10, 0.45, 1.0]
