@@ -8,6 +8,7 @@ from CBF_experiment.active.pybullet.welding_320_common import (
     SimulationScene,
     _prepare_package_urdf,
 )
+from CBF_experiment.active.pybullet.welding_320_geometry import SurfaceDistanceEngine
 
 WORKPIECE_PACKAGE_NAME = "中组立0725(1).stp.SLDASM"
 WORKPIECE_PACKAGE_ALIAS = "workpiece_scene"
@@ -90,9 +91,31 @@ class JakaRobot:
                 self._ik_rest[joint_index] = config.gantry_initial_q[axis_id]
 
         self.q_nominal = np.zeros(self.dof)
+        self._surface_engine = SurfaceDistanceEngine(config)
+        self._surface_engine.register_body(self.body_id, link_indices=self.cbf_link_indices)
+        self._surface_obstacle_links: dict[int, list[int] | None] = {}
 
     def get_link_name(self, link_index: int) -> str:
         return self.link_name_by_index.get(int(link_index), f"link_{int(link_index)}")
+
+    def register_surface_obstacle(self, body_id: int, link_indices: list[int] | None = None):
+        normalized = None if link_indices is None else [int(li) for li in link_indices]
+        self._surface_obstacle_links[int(body_id)] = normalized
+        self._surface_engine.register_body(int(body_id), link_indices=normalized)
+
+    def get_surface_visualization_clouds(
+        self,
+        body_id: int,
+        link_indices: list[int] | None = None,
+        max_points_per_link: int | None = None,
+    ) -> list[dict]:
+        if getattr(self, "_surface_engine", None) is None:
+            return []
+        return self._surface_engine.get_visualization_clouds(
+            int(body_id),
+            link_indices=None if link_indices is None else [int(li) for li in link_indices],
+            max_points_per_link=max_points_per_link,
+        )
 
     @staticmethod
     def get_body_link_name(body_id: int, link_index: int) -> str:
@@ -164,6 +187,16 @@ class JakaRobot:
         return normal @ jt
 
     def get_closest_points_to_obstacle(self, link_index, obs_body_id, max_dist=1.0):
+        if getattr(self, "_surface_engine", None) is not None:
+            result = self._surface_engine.query_link_to_body(
+                robot_body_id=self.body_id,
+                robot_link_index=int(link_index),
+                obstacle_body_id=int(obs_body_id),
+                obstacle_link_indices=self._surface_obstacle_links.get(int(obs_body_id)),
+                max_dist=max_dist,
+            )
+            if result is not None:
+                return result
         contacts = p.getClosestPoints(self.body_id, obs_body_id, max_dist, linkIndexA=link_index)
         if not contacts:
             return None

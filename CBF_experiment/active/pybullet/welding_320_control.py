@@ -456,7 +456,12 @@ class MPCDCBFController:
                         continue
                     support_point = closest["point_on_link"]
                     signed_dist = closest["signed_dist"]
-                    normal = closest["normal_on_obstacle"]
+                    normal_on_link = np.asarray(
+                        closest.get("normal_on_link", -np.asarray(closest["normal_on_obstacle"], dtype=float)),
+                        dtype=float,
+                    )
+                    normal_on_obstacle = np.asarray(closest["normal_on_obstacle"], dtype=float)
+                    normal = normal_on_obstacle
                     h_val = signed_dist - self.config.safety_margin
                     h_vals.append(h_val)
                     grad_rows.append(self.robot.get_link_cbf_row_at_point(link_index, support_point, normal, q, dq))
@@ -471,7 +476,9 @@ class MPCDCBFController:
                         "use_mesh": True,
                         "signed_dist": float(signed_dist),
                         "h_val": float(h_val),
-                        "normal": np.asarray(normal, dtype=float).tolist(),
+                        "normal": normal_on_obstacle.tolist(),
+                        "normal_on_link": normal_on_link.tolist(),
+                        "normal_on_obstacle": normal_on_obstacle.tolist(),
                         "point_on_link": np.asarray(closest["point_on_link"], dtype=float).tolist(),
                         "point_on_obstacle": np.asarray(closest["point_on_obstacle"], dtype=float).tolist(),
                     })
@@ -491,6 +498,8 @@ class MPCDCBFController:
                         "signed_dist": float(signed_dist),
                         "h_val": float(h_val),
                         "normal": np.asarray(normal, dtype=float).tolist(),
+                        "normal_on_link": (-np.asarray(normal, dtype=float)).tolist(),
+                        "normal_on_obstacle": np.asarray(normal, dtype=float).tolist(),
                         "point_on_link": np.asarray(link_pos, dtype=float).tolist(),
                         "point_on_obstacle": np.asarray(link_pos - signed_dist * np.asarray(normal, dtype=float), dtype=float).tolist(),
                     })

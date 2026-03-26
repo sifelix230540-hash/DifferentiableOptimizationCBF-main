@@ -7,6 +7,7 @@ from CBF_experiment.active.pybullet.welding_320_common import (
     ExperimentConfig,
     SimulationScene,
     build_cbf_contact_visualization_specs,
+    build_surface_cloud_visualization_specs,
 )
 
 
@@ -19,14 +20,15 @@ class CBFContactVisualizationTests(unittest.TestCase):
                 "h_val": -0.002,
                 "point_on_link": [1.0, 2.0, 3.0],
                 "point_on_obstacle": [1.0, 2.03, 3.0],
-                "normal": [0.0, 2.0, 0.0],
+                "normal_on_link": [1.0, 0.0, 0.0],
+                "normal_on_obstacle": [0.0, 1.0, 0.0],
             }
         ], normal_length=0.05)
 
         self.assertEqual(len(specs), 1)
         self.assertTrue(np.allclose(specs[0]["point_on_link"], [1.0, 2.0, 3.0]))
         self.assertTrue(np.allclose(specs[0]["point_on_obstacle"], [1.0, 2.03, 3.0]))
-        self.assertTrue(np.allclose(specs[0]["normal_on_link"], [0.0, -1.0, 0.0]))
+        self.assertTrue(np.allclose(specs[0]["normal_on_link"], [1.0, 0.0, 0.0]))
         self.assertTrue(np.allclose(specs[0]["normal_on_obstacle"], [0.0, 1.0, 0.0]))
         self.assertAlmostEqual(specs[0]["normal_length"], 0.05)
         self.assertEqual(specs[0]["label"], "welding_gun_base -> l2 | h=-2.0mm")
@@ -50,6 +52,28 @@ class CBFContactVisualizationTests(unittest.TestCase):
 
         self.assertEqual(len(specs), 1)
         self.assertEqual(specs[0]["label"], "ok | h=1.0mm")
+
+    def test_build_surface_cloud_visualization_specs_skips_empty_clouds(self):
+        specs = build_surface_cloud_visualization_specs(
+            [
+                {
+                    "link_name": "robot_link",
+                    "points": [[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]],
+                    "color": [1.0, 0.0, 0.0],
+                },
+                {
+                    "link_name": "empty",
+                    "points": [],
+                    "color": [0.0, 1.0, 0.0],
+                },
+            ],
+            point_size=6,
+        )
+
+        self.assertEqual(len(specs), 1)
+        self.assertEqual(specs[0]["link_name"], "robot_link")
+        self.assertEqual(specs[0]["point_size"], 6)
+        self.assertTrue(np.allclose(specs[0]["points"], [[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]]))
 
 
 class CollisionVisualFrameTests(unittest.TestCase):

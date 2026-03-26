@@ -48,6 +48,16 @@ class ExperimentConfig:
     cbf_contact_normal_length: float = 0.04
     cbf_contact_cross_size: float = 0.006
     cbf_contact_line_width: float = 2.0
+    surface_prefer_gpu: bool = True
+    surface_target_density: float = 300.0
+    surface_min_samples: int = 96
+    surface_max_samples: int = 768
+    surface_gpu_chunk_size: int = 2048
+    show_surface_samples: bool = True
+    surface_visual_max_points_per_link: int = 48
+    surface_visual_point_size: int = 4
+    surface_visual_update_interval: int = 6
+    ee_trace_lifetime: float = 2.0
 
     # 轨迹
     approach_duration: float = 6.0
@@ -122,6 +132,7 @@ class SimulationScene:
         self.status_text_id = None
         self._collision_visual_specs: list[dict] = []
         self._cbf_contact_debug_ids: list[int] = []
+        self._surface_point_debug_ids: list[int] = []
 
     def _build_environment(self) -> float:
         plane_id = p.loadURDF("plane.urdf")
@@ -251,6 +262,11 @@ class SimulationScene:
             p.removeUserDebugItem(item_id)
         self._cbf_contact_debug_ids.clear()
 
+    def clear_surface_cloud_visuals(self):
+        for item_id in self._surface_point_debug_ids:
+            p.removeUserDebugItem(item_id)
+        self._surface_point_debug_ids.clear()
+
     def _add_debug_cross(self, center, color, half_extent: float, width: float):
         center = np.asarray(center, dtype=float)
         segments = (
@@ -304,6 +320,22 @@ class SimulationScene:
                     midpoint.tolist(),
                     textColorRGB=label_color,
                     textSize=1.0,
+                )
+            )
+
+    def update_surface_cloud_visuals(self, cloud_specs: list[dict]):
+        self.clear_surface_cloud_visuals()
+        for spec in cloud_specs:
+            points = np.asarray(spec["points"], dtype=float).reshape(-1, 3)
+            if points.shape[0] == 0:
+                continue
+            colors = np.asarray(spec["colors"], dtype=float).reshape(-1, 3)
+            point_size = int(spec.get("point_size", self.config.surface_visual_point_size))
+            self._surface_point_debug_ids.append(
+                p.addUserDebugPoints(
+                    points.tolist(),
+                    colors.tolist(),
+                    pointSize=point_size,
                 )
             )
 
@@ -385,6 +417,17 @@ def _coerce_vec3(value) -> np.ndarray | None:
     return arr
 
 
+def _coerce_points_array(value) -> np.ndarray | None:
+    arr = np.asarray(value, dtype=float)
+    if arr.size == 0:
+        return np.zeros((0, 3), dtype=float)
+    if arr.ndim == 1:
+        arr = arr.reshape(1, -1)
+    if arr.shape[1] != 3 or not np.all(np.isfinite(arr)):
+        return None
+    return arr
+
+
 def build_cbf_contact_visualization_specs(cbf_contacts: list[dict], normal_length: float = 0.04) -> list[dict]:
     specs = []
     for idx, contact in enumerate(cbf_contacts or []):
@@ -393,12 +436,23 @@ def build_cbf_contact_visualization_specs(cbf_contacts: list[dict], normal_lengt
         if point_on_link is None or point_on_obstacle is None:
             continue
 
-        normal_on_obstacle = _coerce_vec3(contact.get("normal"))
+        normal_on_link = _coerce_vec3(contact.get("normal_on_link"))
+        normal_on_obstacle = _coerce_vec3(contact.get("normal_on_obstacle"))
+        if normal_on_link is None or np.linalg.norm(normal_on_link) < 1e-9:
+            normal_on_link = None
+        if normal_on_obstacle is None or np.linalg.norm(normal_on_obstacle) < 1e-9:
+            normal_on_obstacle = _coerce_vec3(contact.get("normal"))
         if normal_on_obstacle is None or np.linalg.norm(normal_on_obstacle) < 1e-9:
             normal_on_obstacle = point_on_link - point_on_obstacle
         normal_on_obstacle = _normalize(normal_on_obstacle)
         if np.linalg.norm(normal_on_obstacle) < 1e-9:
             normal_on_obstacle = np.array([1.0, 0.0, 0.0], dtype=float)
+        if normal_on_link is None:
+            normal_on_link = -normal_on_obstacle
+        else:
+            normal_on_link = _normalize(normal_on_link)
+            if np.linalg.norm(normal_on_link) < 1e-9:
+                normal_on_link = -normal_on_obstacle
 
         h_val = float(contact.get("h_val", float("nan")))
         link_name = str(contact.get("link_name", f"cbf_{idx}"))
@@ -412,7 +466,7 @@ def build_cbf_contact_visualization_specs(cbf_contacts: list[dict], normal_lengt
         specs.append({
             "point_on_link": point_on_link,
             "point_on_obstacle": point_on_obstacle,
-            "normal_on_link": -normal_on_obstacle,
+            "normal_on_link": normal_on_link,
             "normal_on_obstacle": normal_on_obstacle,
             "normal_length": float(normal_length),
             "label": (
@@ -422,6 +476,25 @@ def build_cbf_contact_visualization_specs(cbf_contacts: list[dict], normal_lengt
             ),
             "pair_color": pair_color,
             "label_color": pair_color,
+        })
+    return specs
+
+
+def build_surface_cloud_visualization_specs(clouds: list[dict], point_size: int = 4) -> list[dict]:
+    specs = []
+    for idx, cloud in enumerate(clouds or []):
+        points = _coerce_points_array(cloud.get("points"))
+        if points is None or points.shape[0] == 0:
+            continue
+        color = _coerce_vec3(cloud.get("color"))
+        if color is None:
+            color = np.array([0.2, 0.2, 0.2], dtype=float)
+        colors = np.repeat(color.reshape(1, 3), points.shape[0], axis=0)
+        specs.append({
+            "link_name": str(cloud.get("link_name", f"cloud_{idx}")),
+            "points": points,
+            "colors": colors,
+            "point_size": int(point_size),
         })
     return specs
 

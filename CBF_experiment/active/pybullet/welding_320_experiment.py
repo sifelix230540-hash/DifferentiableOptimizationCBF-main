@@ -8,6 +8,7 @@ from CBF_experiment.active.pybullet.welding_320_common import (
     ExperimentConfig,
     SimulationScene,
     build_cbf_contact_visualization_specs,
+    build_surface_cloud_visualization_specs,
     build_weld_reference_quat,
 )
 from CBF_experiment.active.pybullet.welding_320_control import (
@@ -61,6 +62,7 @@ class AvoidanceExperiment:
             )
             wp_obs.disable_collision_with(self.robot.body_id, self.robot.num_joints)
             self.obstacles.append(wp_obs)
+            self.robot.register_surface_obstacle(self.workpiece.body_id, None)
 
         start_pos, start_frame_quat = self.workpiece.get_frame_pose(config.start_link_name)
         goal_pos, goal_frame_quat = self.workpiece.get_frame_pose(config.goal_link_name)
@@ -175,11 +177,42 @@ class AvoidanceExperiment:
         self.scene.enable_rendering()
         print("===== 焊接实验 (控制器: mpc_dcbf, 障碍: workpiece_only) =====")
 
+    def _build_surface_cloud_specs(self) -> list[dict]:
+        max_points = int(self.config.surface_visual_max_points_per_link)
+        robot_clouds = self.robot.get_surface_visualization_clouds(
+            self.robot.body_id,
+            link_indices=self.robot.cbf_link_indices,
+            max_points_per_link=max_points,
+        )
+        for cloud in robot_clouds:
+            cloud["color"] = [1.0, 0.35, 0.05]
+
+        obstacle_clouds = []
+        if not self.config.ignore_all_collisions:
+            obstacle_clouds = self.robot.get_surface_visualization_clouds(
+                self.workpiece.body_id,
+                link_indices=None,
+                max_points_per_link=max_points,
+            )
+            for cloud in obstacle_clouds:
+                cloud["color"] = [0.10, 0.45, 1.0]
+
+        return build_surface_cloud_visualization_specs(
+            robot_clouds + obstacle_clouds,
+            point_size=self.config.surface_visual_point_size,
+        )
+
     def _update_visuals(self, ee_pos, ref_pos, info, progress_value):
         self.scene.update_marker(self.ee_marker, ee_pos.tolist())
         self.scene.update_marker(self.ref_marker, ref_pos.tolist())
         if self.config.show_collision_meshes:
             self.scene.update_collision_mesh_visuals()
+        if self.config.show_surface_samples:
+            interval = max(int(self.config.surface_visual_update_interval), 1)
+            if self.sim_step % interval == 0:
+                self.scene.update_surface_cloud_visuals(self._build_surface_cloud_specs())
+        else:
+            self.scene.clear_surface_cloud_visuals()
         if self.config.show_cbf_contacts:
             self.scene.update_cbf_contact_visuals(
                 build_cbf_contact_visualization_specs(
@@ -190,7 +223,13 @@ class AvoidanceExperiment:
         else:
             self.scene.clear_cbf_contact_visuals()
         if np.linalg.norm(ee_pos - self.prev_ee) > 1e-3:
-            p.addUserDebugLine(self.prev_ee.tolist(), ee_pos.tolist(), [0.1, 0.8, 0.2], lineWidth=1.5)
+            p.addUserDebugLine(
+                self.prev_ee.tolist(),
+                ee_pos.tolist(),
+                [0.1, 0.8, 0.2],
+                lineWidth=1.5,
+                lifeTime=float(self.config.ee_trace_lifetime),
+            )
             self.prev_ee = ee_pos.copy()
         seg_idx = min(self.trajectory.current_segment_index(progress_value) + 1, len(self.trajectory.segments))
         self.scene.update_status(
