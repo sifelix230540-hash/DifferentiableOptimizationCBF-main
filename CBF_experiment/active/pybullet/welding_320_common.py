@@ -58,6 +58,9 @@ class ExperimentConfig:
     surface_visual_point_size: int = 4
     surface_visual_update_interval: int = 6
     ee_trace_lifetime: float = 2.0
+    use_rrt_nominal_planner: bool = False
+    show_nominal_planner_toggle: bool = True
+    nominal_planner_toggle_wait_s: float = 3.0
 
     # 轨迹
     approach_duration: float = 6.0
@@ -85,7 +88,7 @@ class ExperimentConfig:
     # MPC
     N_mpc: int = 5
     mpc_dt: float = 0.04
-    gamma_dcbf: float = 1
+    gamma_dcbf: float = 0.5
     mpc_tracking_weight: float = 5.0
     mpc_orientation_tracking_weight: float = 0.2
     mpc_terminal_orientation_window: float = 0.20
@@ -172,6 +175,27 @@ class SimulationScene:
 
     def enable_rendering(self):
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+
+    def add_toggle(self, label: str, default: bool) -> int:
+        return p.addUserDebugParameter(label, 0.0, 1.0, 1.0 if default else 0.0)
+
+    def read_toggle(self, item_id: int) -> bool:
+        return bool(p.readUserDebugParameter(item_id) >= 0.5)
+
+    def choose_toggle(self, label: str, default: bool, wait_s: float = 0.0) -> bool:
+        toggle_id = self.add_toggle(label, default)
+        selected = bool(default)
+        deadline = time.time() + max(float(wait_s), 0.0)
+        first_read = True
+        while first_read or time.time() < deadline:
+            selected = self.read_toggle(toggle_id)
+            first_read = False
+            if time.time() < deadline:
+                self.update_status(
+                    f"{label}: {'ON' if selected else 'OFF'}  |  可在左侧滑条切换，稍后自动开始规划"
+                )
+                time.sleep(min(0.05, max(deadline - time.time(), 0.0)))
+        return selected
 
     @staticmethod
     def _get_body_link_pose(body_id: int, link_index: int):

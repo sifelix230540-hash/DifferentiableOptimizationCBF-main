@@ -17,7 +17,7 @@ from CBF_experiment.active.pybullet.welding_320_control import (
     create_controller,
 )
 from CBF_experiment.active.pybullet.welding_320_robot import JakaRobot, URDFObstacle, WorkpieceModel
-from CBF_experiment.active.pybullet.welding_320_trajectory import PathProgressTrajectory
+from CBF_experiment.active.pybullet.welding_320_trajectory import JointWaypointTrajectory, PathProgressTrajectory, PiecewiseLineSlerpTrajectory
 
 
 def format_step_status_line(sim_step: int, seg_idx: int, progress_exec: float, progress_end: float, gantry_pos, info: dict) -> str:
@@ -42,12 +42,86 @@ def format_step_status_line(sim_step: int, seg_idx: int, progress_exec: float, p
     )
 
 
+def build_linear_nominal_trajectory(
+    config: ExperimentConfig,
+    initial_pose: tuple[np.ndarray, np.ndarray],
+    start_ref: tuple[np.ndarray, np.ndarray],
+    goal_ref: tuple[np.ndarray, np.ndarray],
+):
+    initial_pos, initial_quat = initial_pose
+    start_pos, start_quat = start_ref
+    goal_pos, goal_quat = goal_ref
+    segments = [
+        JointWaypointTrajectory(
+            [initial_pos, start_pos],
+            [initial_quat, start_quat],
+            config.approach_duration,
+            config.dt,
+            planner_status="linear_nominal",
+        ),
+        JointWaypointTrajectory(
+            [start_pos, goal_pos],
+            [start_quat, goal_quat],
+            config.weld_duration,
+            config.dt,
+            planner_status="linear_nominal",
+        ),
+        JointWaypointTrajectory(
+            [goal_pos, initial_pos],
+            [goal_quat, initial_quat],
+            config.return_duration,
+            config.dt,
+            planner_status="linear_nominal",
+        ),
+    ]
+    return PiecewiseLineSlerpTrajectory(segments)
+
+
+def build_nominal_trajectory(
+    config: ExperimentConfig,
+    planner,
+    q_init,
+    q_start,
+    q_goal,
+    initial_pose: tuple[np.ndarray, np.ndarray],
+    start_ref: tuple[np.ndarray, np.ndarray],
+    goal_ref: tuple[np.ndarray, np.ndarray],
+):
+    if bool(config.use_rrt_nominal_planner):
+        return planner.build_three_phase_trajectory(
+            q_init,
+            q_start,
+            q_goal,
+            initial_pose,
+            start_ref,
+            goal_ref,
+        )
+    return build_linear_nominal_trajectory(
+        config,
+        initial_pose,
+        start_ref,
+        goal_ref,
+    )
+
+
 class AvoidanceExperiment:
     """串起场景、机器人、工件、规划与控制的主实验流程。"""
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
         self.scene = SimulationScene(config)
+        if self.config.show_nominal_planner_toggle:
+            print(
+                f"[info] 启动后 {float(self.config.nominal_planner_toggle_wait_s):.1f}s 内，"
+                "可在左侧滑条切换 Use RRT Planner。"
+            )
+            self.config.use_rrt_nominal_planner = self.scene.choose_toggle(
+                label="Use RRT Planner",
+                default=bool(self.config.use_rrt_nominal_planner),
+                wait_s=float(self.config.nominal_planner_toggle_wait_s),
+            )
+        self.use_rrt_nominal_planner = bool(self.config.use_rrt_nominal_planner)
+        print(f"[info] 当前名义轨迹模式: {'RRT' if self.use_rrt_nominal_planner else 'linear nominal'}")
         self.robot = JakaRobot(config, self.scene)
         self.workpiece = WorkpieceModel(config)
 
@@ -83,12 +157,16 @@ class AvoidanceExperiment:
         q_init, _ = self.robot.get_joint_state()
         q_start = self.robot.calculate_ik(start_pos, start_quat)
         q_goal = self.robot.calculate_ik(goal_pos, goal_quat)
-        self.nominal_planner = CartesianRRTNominalPlanner(
-            self.robot,
-            config,
-            workpiece_body_id=self.workpiece.body_id,
-        )
-        base_trajectory = self.nominal_planner.build_three_phase_trajectory(
+        self.nominal_planner = None
+        if self.use_rrt_nominal_planner:
+            self.nominal_planner = CartesianRRTNominalPlanner(
+                self.robot,
+                config,
+                workpiece_body_id=self.workpiece.body_id,
+            )
+        base_trajectory = build_nominal_trajectory(
+            self.config,
+            self.nominal_planner,
             q_init,
             q_start,
             q_goal,
@@ -98,16 +176,19 @@ class AvoidanceExperiment:
         )
         self.trajectory = PathProgressTrajectory(base_trajectory)
 
-        if config.ignore_all_collisions:
+        self.nominal_plan_statuses = [getattr(seg, "planner_status", "unknown") for seg in base_trajectory.segments]
+        if self.use_rrt_nominal_planner and config.ignore_all_collisions:
             print("[info] 名义轨迹使用末端尖点笛卡尔 RRT（当前忽略全部碰撞）。")
             print("[info] CBF/名义规划均已忽略碰撞，仅保留轨迹跟踪。")
-        else:
+        elif self.use_rrt_nominal_planner:
             print("[info] 名义轨迹使用末端尖点笛卡尔 RRT（仅检查 welding_gun_base 对工件碰撞）。")
+        else:
+            print("[info] 名义轨迹使用三段直线+slerp（未启用 RRT）。")
         print(
             "[info] 各段规划状态: "
             + ", ".join(
                 f"seg{i + 1}={status}"
-                for i, status in enumerate(self.nominal_planner.last_plan_statuses)
+                for i, status in enumerate(self.nominal_plan_statuses)
             )
         )
 
