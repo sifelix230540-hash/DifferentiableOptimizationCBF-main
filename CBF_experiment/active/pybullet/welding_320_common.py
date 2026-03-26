@@ -61,16 +61,25 @@ class ExperimentConfig:
     obstacle_surface_target_density: float = 1200.0
     obstacle_surface_min_samples: int = 256
     obstacle_surface_max_samples: int = 4096
+    obstacle_local_dense_enabled: bool = True
+    obstacle_local_dense_radius: float = 2.0
+    obstacle_local_dense_target_density: float = 4800.0
+    obstacle_local_dense_min_samples: int = 1024
+    obstacle_local_dense_max_samples: int = 12000
+    obstacle_local_dense_query_enabled: bool = True
+    obstacle_local_dense_visual_enabled: bool = True
+    obstacle_local_dense_update_interval: int = 5
     surface_gpu_chunk_size: int = 2048
     show_surface_samples: bool = True
     surface_visual_max_points_per_link: int = 48
     robot_surface_visual_max_points_per_link: int = 48
     robot_rear_six_visual_max_points_per_link: int = 240
     obstacle_surface_visual_max_points_per_link: int = 240
+    obstacle_local_dense_visual_max_points_per_link: int = 1200
     surface_visual_point_size: int = 4
     surface_visual_update_interval: int = 6
     ee_trace_lifetime: float = 2.0
-    use_rrt_nominal_planner: bool = False
+    use_rrt_nominal_planner: bool = True
     show_nominal_planner_toggle: bool = True
     nominal_planner_toggle_wait_s: float = 3.0
 
@@ -84,7 +93,7 @@ class ExperimentConfig:
     position_gain: float = 1.0
     orientation_gain: float = 3.0
     use_mesh_cbf: bool = True
-    safety_margin: float = 0.05
+    safety_margin: float = 0.005
     q_nominal_tracking: float = 0.02
     use_dynamic_nominal_reference: bool = True
     dynamic_nominal_history_size: int = 15

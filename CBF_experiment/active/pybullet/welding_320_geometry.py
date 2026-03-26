@@ -46,6 +46,12 @@ def compute_surface_sample_count(area: float, density: float, min_samples: int, 
 
 def resolve_surface_sampling_params(config, role: str) -> tuple[float, int, int]:
     role_name = str(role or "default").lower()
+    if role_name == "obstacle_local_dense":
+        return (
+            float(getattr(config, "obstacle_local_dense_target_density", getattr(config, "obstacle_surface_target_density", getattr(config, "surface_target_density", 400.0)))),
+            int(getattr(config, "obstacle_local_dense_min_samples", getattr(config, "obstacle_surface_min_samples", getattr(config, "surface_min_samples", 64)))),
+            int(getattr(config, "obstacle_local_dense_max_samples", getattr(config, "obstacle_surface_max_samples", getattr(config, "surface_max_samples", 1024)))),
+        )
     if role_name == "robot_rear_six":
         return (
             float(getattr(config, "robot_rear_six_surface_target_density", getattr(config, "robot_surface_target_density", getattr(config, "surface_target_density", 400.0)))),
@@ -73,6 +79,14 @@ def resolve_surface_sampling_params(config, role: str) -> tuple[float, int, int]
 
 def resolve_surface_visual_max_points(config, role: str) -> int:
     role_name = str(role or "default").lower()
+    if role_name == "obstacle_local_dense":
+        return int(
+            getattr(
+                config,
+                "obstacle_local_dense_visual_max_points_per_link",
+                getattr(config, "obstacle_surface_visual_max_points_per_link", getattr(config, "surface_visual_max_points_per_link", 48)),
+            )
+        )
     if role_name == "robot_rear_six":
         return int(
             getattr(
@@ -126,6 +140,65 @@ def compute_world_surface(
     pts = (rot @ np.asarray(local_points, dtype=float).T).T + np.asarray(world_pos, dtype=float)
     normals = (rot @ np.asarray(local_normals, dtype=float).T).T
     return pts, _normalize_rows(normals)
+
+
+def extract_local_surface_roi(
+    mesh,
+    world_pos: np.ndarray,
+    world_quat: np.ndarray,
+    center_world: np.ndarray,
+    radius: float,
+):
+    if mesh is None or center_world is None or float(radius) <= 0.0:
+        return None
+    centers_local = np.asarray(getattr(mesh, "triangles_center", np.empty((0, 3))), dtype=float).reshape(-1, 3)
+    if centers_local.shape[0] == 0:
+        return None
+    centers_world, _ = compute_world_surface(
+        centers_local,
+        np.zeros_like(centers_local),
+        np.asarray(world_pos, dtype=float),
+        np.asarray(world_quat, dtype=float),
+    )
+    mask = np.linalg.norm(centers_world - np.asarray(center_world, dtype=float), axis=1) <= float(radius)
+    face_indices = np.flatnonzero(mask)
+    if face_indices.size == 0:
+        return None
+    try:
+        roi_mesh = mesh.submesh([face_indices], append=True, repair=False)
+    except Exception:
+        return None
+    if roi_mesh is None or len(getattr(roi_mesh, "faces", [])) == 0:
+        return None
+    return roi_mesh
+
+
+def sample_local_dense_surface(
+    mesh,
+    world_pos: np.ndarray,
+    world_quat: np.ndarray,
+    center_world: np.ndarray,
+    radius: float,
+    density: float,
+    min_samples: int,
+    max_samples: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    roi_mesh = extract_local_surface_roi(mesh, world_pos, world_quat, center_world, radius)
+    if roi_mesh is None:
+        return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=float)
+    area = float(getattr(roi_mesh, "area", 0.0))
+    count = compute_surface_sample_count(area, density, min_samples, max_samples)
+    if count <= 0:
+        return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=float)
+    trimesh = SurfaceDistanceEngine._import_trimesh()
+    points_local, face_indices = trimesh.sample.sample_surface(roi_mesh, count)
+    normals_local = roi_mesh.face_normals[face_indices]
+    return compute_world_surface(
+        np.asarray(points_local, dtype=float),
+        np.asarray(normals_local, dtype=float),
+        np.asarray(world_pos, dtype=float),
+        np.asarray(world_quat, dtype=float),
+    )
 
 
 def _compose_surface_result(
@@ -243,6 +316,8 @@ class SurfaceDistanceEngine:
         self._body_clouds: dict[int, dict[int, SurfaceLinkCloud]] = {}
         self._body_roles: dict[int, str] = {}
         self._world_cache: dict[tuple[int, int], dict] = {}
+        self._local_dense_cache: dict[tuple[int, int], dict] = {}
+        self._local_dense_request_seq = 0
         self._torch = None
         self._gpu_enabled = False
         if getattr(config, "surface_prefer_gpu", False):
@@ -261,6 +336,114 @@ class SurfaceDistanceEngine:
 
     def clear_world_cache(self):
         self._world_cache.clear()
+        self._local_dense_cache.clear()
+
+    def _build_world_payload(
+        self,
+        body_id: int,
+        link_index: int,
+        link_name: str,
+        local_mesh,
+        world_pos: np.ndarray,
+        world_quat: np.ndarray,
+        world_points: np.ndarray,
+        world_normals: np.ndarray,
+    ) -> dict:
+        payload = {
+            "body_id": int(body_id),
+            "link_index": int(link_index),
+            "link_name": str(link_name),
+            "points": np.asarray(world_points, dtype=float).reshape(-1, 3),
+            "normals": np.asarray(world_normals, dtype=float).reshape(-1, 3),
+            "local_mesh": local_mesh,
+            "world_pos": np.asarray(world_pos, dtype=float),
+            "world_quat": np.asarray(world_quat, dtype=float),
+        }
+        if self._gpu_enabled:
+            payload["device_points"] = self._torch.as_tensor(payload["points"], dtype=self._torch.float32, device="cuda")
+            payload["device_normals"] = self._torch.as_tensor(payload["normals"], dtype=self._torch.float32, device="cuda")
+        return payload
+
+    @staticmethod
+    def _quat_distance(quat_a: np.ndarray, quat_b: np.ndarray) -> float:
+        qa = np.asarray(quat_a, dtype=float).reshape(4)
+        qb = np.asarray(quat_b, dtype=float).reshape(4)
+        return float(min(np.linalg.norm(qa - qb), np.linalg.norm(qa + qb)))
+
+    def _get_local_dense_world_cloud(
+        self,
+        body_id: int,
+        link_index: int,
+        query_center_world: np.ndarray | None,
+    ) -> dict | None:
+        if not bool(getattr(self.config, "obstacle_local_dense_enabled", False)):
+            return None
+        if query_center_world is None:
+            return None
+        body_clouds = self._body_clouds.get(int(body_id), {})
+        cloud = body_clouds.get(int(link_index))
+        if cloud is None or str(cloud.role).lower() != "obstacle" or cloud.local_mesh is None:
+            return None
+
+        world_pos, world_quat = self._get_body_link_pose(body_id, link_index)
+        center = np.asarray(query_center_world, dtype=float).reshape(3)
+        radius = float(getattr(self.config, "obstacle_local_dense_radius", 2.0))
+        refresh_interval = max(int(getattr(self.config, "obstacle_local_dense_update_interval", 5)), 1)
+        self._local_dense_request_seq += 1
+
+        cache_key = (int(body_id), int(link_index))
+        cached = self._local_dense_cache.get(cache_key)
+        should_refresh = cached is None
+        if cached is not None:
+            if (self._local_dense_request_seq - int(cached.get("request_seq", 0))) >= refresh_interval:
+                should_refresh = True
+            elif np.linalg.norm(center - np.asarray(cached.get("center_world", center), dtype=float)) > max(radius * 0.05, 0.02):
+                should_refresh = True
+            elif np.linalg.norm(np.asarray(world_pos, dtype=float) - np.asarray(cached.get("world_pos", world_pos), dtype=float)) > 1e-6:
+                should_refresh = True
+            elif self._quat_distance(np.asarray(world_quat, dtype=float), np.asarray(cached.get("world_quat", world_quat), dtype=float)) > 1e-6:
+                should_refresh = True
+
+        if should_refresh:
+            density, min_samples, max_samples = resolve_surface_sampling_params(self.config, role="obstacle_local_dense")
+            world_points, world_normals = sample_local_dense_surface(
+                mesh=cloud.local_mesh,
+                world_pos=np.asarray(world_pos, dtype=float),
+                world_quat=np.asarray(world_quat, dtype=float),
+                center_world=center,
+                radius=radius,
+                density=density,
+                min_samples=min_samples,
+                max_samples=max_samples,
+            )
+            payload = self._build_world_payload(
+                body_id=int(body_id),
+                link_index=int(link_index),
+                link_name=cloud.link_name,
+                local_mesh=cloud.local_mesh,
+                world_pos=np.asarray(world_pos, dtype=float),
+                world_quat=np.asarray(world_quat, dtype=float),
+                world_points=world_points,
+                world_normals=world_normals,
+            )
+            payload["center_world"] = center
+            payload["request_seq"] = int(self._local_dense_request_seq)
+            self._local_dense_cache[cache_key] = payload
+            cached = payload
+        return cached
+
+    def _get_preferred_obstacle_cloud(
+        self,
+        body_id: int,
+        link_index: int,
+        query_center_world: np.ndarray | None,
+        prefer_local_dense: bool,
+    ) -> dict | None:
+        if prefer_local_dense:
+            dense_cloud = self._get_local_dense_world_cloud(body_id, link_index, query_center_world=query_center_world)
+            if dense_cloud is not None and dense_cloud["points"].shape[0] > 0:
+                return dense_cloud
+        return self._get_world_cloud(body_id, link_index)
 
     @staticmethod
     def _get_body_link_pose(body_id: int, link_index: int):
@@ -411,19 +594,16 @@ class SurfaceDistanceEngine:
             np.asarray(world_pos, dtype=float),
             np.asarray(world_quat, dtype=float),
         )
-        payload = {
-            "body_id": int(body_id),
-            "link_index": int(link_index),
-            "link_name": cloud.link_name,
-            "points": world_points,
-            "normals": world_normals,
-            "local_mesh": cloud.local_mesh,
-            "world_pos": np.asarray(world_pos, dtype=float),
-            "world_quat": np.asarray(world_quat, dtype=float),
-        }
-        if self._gpu_enabled:
-            payload["device_points"] = self._torch.as_tensor(world_points, dtype=self._torch.float32, device="cuda")
-            payload["device_normals"] = self._torch.as_tensor(world_normals, dtype=self._torch.float32, device="cuda")
+        payload = self._build_world_payload(
+            body_id=int(body_id),
+            link_index=int(link_index),
+            link_name=cloud.link_name,
+            local_mesh=cloud.local_mesh,
+            world_pos=np.asarray(world_pos, dtype=float),
+            world_quat=np.asarray(world_quat, dtype=float),
+            world_points=world_points,
+            world_normals=world_normals,
+        )
         self._world_cache[cache_key] = payload
         return payload
 
@@ -432,6 +612,7 @@ class SurfaceDistanceEngine:
         body_id: int,
         link_indices: list[int] | None = None,
         max_points_per_link: int | None = None,
+        query_center_world: np.ndarray | None = None,
     ) -> list[dict]:
         available = self._body_clouds.get(int(body_id), {})
         candidate_links = (
@@ -441,13 +622,26 @@ class SurfaceDistanceEngine:
         )
         clouds = []
         for link_index in candidate_links:
-            world_cloud = self._get_world_cloud(int(body_id), int(link_index))
+            link_role = getattr(available.get(int(link_index)), "role", self._body_roles.get(int(body_id), "default"))
+            use_local_dense = (
+                str(link_role).lower() == "obstacle"
+                and bool(getattr(self.config, "obstacle_local_dense_visual_enabled", False))
+            )
+            world_cloud = self._get_preferred_obstacle_cloud(
+                int(body_id),
+                int(link_index),
+                query_center_world=query_center_world,
+                prefer_local_dense=use_local_dense,
+            )
             if world_cloud is None:
                 continue
             point_limit = (
                 int(max_points_per_link)
                 if max_points_per_link is not None
-                else resolve_surface_visual_max_points(self.config, role=getattr(available.get(int(link_index)), "role", self._body_roles.get(int(body_id), "default")))
+                else resolve_surface_visual_max_points(
+                    self.config,
+                    role="obstacle_local_dense" if use_local_dense and world_cloud["points"].shape[0] > 0 else link_role,
+                )
             )
             points, normals = sample_cloud_for_visualization(
                 world_cloud["points"],
@@ -490,6 +684,7 @@ class SurfaceDistanceEngine:
         obstacle_body_id: int,
         obstacle_link_indices: list[int] | None = None,
         max_dist: float | None = None,
+        query_center_world: np.ndarray | None = None,
     ) -> dict | None:
         robot_cloud = self._get_world_cloud(robot_body_id, robot_link_index)
         if robot_cloud is None:
@@ -502,7 +697,12 @@ class SurfaceDistanceEngine:
         )
         best = None
         for obs_link_index in candidate_links:
-            obs_cloud = self._get_world_cloud(obstacle_body_id, obs_link_index)
+            obs_cloud = self._get_preferred_obstacle_cloud(
+                obstacle_body_id,
+                obs_link_index,
+                query_center_world=query_center_world,
+                prefer_local_dense=bool(getattr(self.config, "obstacle_local_dense_query_enabled", False)),
+            )
             if obs_cloud is None:
                 continue
             if max_dist is not None and self._aabb_distance(robot_cloud["points"], obs_cloud["points"]) > float(max_dist):

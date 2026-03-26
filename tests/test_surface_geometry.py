@@ -7,10 +7,14 @@ from CBF_experiment.active.pybullet.welding_320_geometry import (
     apply_contains_sign_to_distance,
     compute_surface_sample_count,
     compute_world_surface,
+    extract_local_surface_roi,
     find_closest_surface_pair_cpu,
     resolve_surface_sampling_params,
     resolve_surface_visual_max_points,
+    sample_local_dense_surface,
     sample_cloud_for_visualization,
+    SurfaceDistanceEngine,
+    SurfaceLinkCloud,
 )
 from CBF_experiment.active.pybullet.welding_320_common import ExperimentConfig
 
@@ -129,12 +133,165 @@ class SurfaceVisualizationSamplingTests(unittest.TestCase):
         self.assertGreater(rear_max_samples, robot_max_samples)
         self.assertGreater(resolve_surface_visual_max_points(cfg, role="robot_rear_six"), resolve_surface_visual_max_points(cfg, role="robot"))
 
+    def test_obstacle_local_dense_role_uses_higher_sampling_and_visual_density_than_obstacle(self):
+        cfg = ExperimentConfig()
+
+        obstacle_density, obstacle_min_samples, obstacle_max_samples = resolve_surface_sampling_params(cfg, role="obstacle")
+        local_density, local_min_samples, local_max_samples = resolve_surface_sampling_params(cfg, role="obstacle_local_dense")
+
+        self.assertGreater(local_density, obstacle_density)
+        self.assertGreater(local_min_samples, obstacle_min_samples)
+        self.assertGreater(local_max_samples, obstacle_max_samples)
+        self.assertGreater(
+            resolve_surface_visual_max_points(cfg, role="obstacle_local_dense"),
+            resolve_surface_visual_max_points(cfg, role="obstacle"),
+        )
+
     def test_compute_surface_sample_count_respects_density_and_limits(self):
         robot_count = compute_surface_sample_count(area=1.0, density=300.0, min_samples=96, max_samples=768)
         obstacle_count = compute_surface_sample_count(area=1.0, density=1200.0, min_samples=256, max_samples=4096)
 
         self.assertEqual(robot_count, 300)
         self.assertEqual(obstacle_count, 1200)
+
+    def test_extract_local_surface_roi_keeps_only_faces_near_query_center(self):
+        import trimesh
+
+        mesh = trimesh.creation.box(extents=[1.0, 1.0, 1.0])
+        roi_mesh = extract_local_surface_roi(
+            mesh,
+            world_pos=np.zeros(3, dtype=float),
+            world_quat=np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+            center_world=np.array([0.49, 0.0, 0.0], dtype=float),
+            radius=0.25,
+        )
+
+        self.assertIsNotNone(roi_mesh)
+        self.assertTrue(np.all(roi_mesh.triangles_center[:, 0] > 0.0))
+
+    def test_sample_local_dense_surface_focuses_samples_on_selected_roi(self):
+        import trimesh
+
+        mesh = trimesh.creation.box(extents=[1.0, 1.0, 1.0])
+        points, normals = sample_local_dense_surface(
+            mesh=mesh,
+            world_pos=np.zeros(3, dtype=float),
+            world_quat=np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+            center_world=np.array([0.49, 0.0, 0.0], dtype=float),
+            radius=0.25,
+            density=400.0,
+            min_samples=32,
+            max_samples=128,
+        )
+
+        self.assertGreater(points.shape[0], 0)
+        self.assertTrue(np.allclose(points[:, 0], 0.5, atol=1e-6))
+        self.assertTrue(np.allclose(normals[:, 0], 1.0, atol=1e-6))
+
+
+class SurfaceLocalDensePreferenceTests(unittest.TestCase):
+    def test_visualization_prefers_local_dense_obstacle_cloud(self):
+        cfg = ExperimentConfig()
+        engine = SurfaceDistanceEngine(cfg)
+        engine._body_clouds = {
+            7: {
+                0: SurfaceLinkCloud(
+                    body_id=7,
+                    link_index=0,
+                    link_name="obstacle_link",
+                    local_points=np.zeros((1, 3), dtype=float),
+                    local_normals=np.zeros((1, 3), dtype=float),
+                    role="obstacle",
+                )
+            }
+        }
+        engine._body_roles = {7: "obstacle"}
+        engine._get_local_dense_world_cloud = lambda *args, **kwargs: {
+            "body_id": 7,
+            "link_index": 0,
+            "link_name": "obstacle_link",
+            "points": np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]], dtype=float),
+            "normals": np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=float),
+            "local_mesh": None,
+            "world_pos": np.zeros(3, dtype=float),
+            "world_quat": np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+        }
+        engine._get_world_cloud = lambda body_id, link_index: {
+            "body_id": int(body_id),
+            "link_index": int(link_index),
+            "link_name": "obstacle_link",
+            "points": np.array([[9.0, 0.0, 0.0]], dtype=float),
+            "normals": np.array([[1.0, 0.0, 0.0]], dtype=float),
+            "local_mesh": None,
+            "world_pos": np.zeros(3, dtype=float),
+            "world_quat": np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+        }
+
+        clouds = engine.get_visualization_clouds(7, query_center_world=np.zeros(3, dtype=float))
+
+        self.assertEqual(len(clouds), 1)
+        self.assertTrue(np.allclose(clouds[0]["points"][0], [1.0, 0.0, 0.0]))
+
+    def test_query_prefers_local_dense_obstacle_cloud(self):
+        cfg = ExperimentConfig()
+        engine = SurfaceDistanceEngine(cfg)
+        engine._body_clouds = {
+            1: {
+                0: SurfaceLinkCloud(
+                    body_id=1,
+                    link_index=0,
+                    link_name="robot_link",
+                    local_points=np.zeros((1, 3), dtype=float),
+                    local_normals=np.zeros((1, 3), dtype=float),
+                    role="robot",
+                )
+            },
+            7: {
+                0: SurfaceLinkCloud(
+                    body_id=7,
+                    link_index=0,
+                    link_name="obstacle_link",
+                    local_points=np.zeros((1, 3), dtype=float),
+                    local_normals=np.zeros((1, 3), dtype=float),
+                    role="obstacle",
+                )
+            },
+        }
+        engine._body_roles = {1: "robot", 7: "obstacle"}
+        engine._get_world_cloud = lambda body_id, link_index: {
+            "body_id": int(body_id),
+            "link_index": int(link_index),
+            "link_name": "robot_link" if int(body_id) == 1 else "obstacle_link",
+            "points": np.array([[0.0, 0.0, 0.0]], dtype=float) if int(body_id) == 1 else np.array([[5.0, 0.0, 0.0]], dtype=float),
+            "normals": np.array([[1.0, 0.0, 0.0]], dtype=float),
+            "local_mesh": None,
+            "world_pos": np.zeros(3, dtype=float),
+            "world_quat": np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+            "device_points": None,
+            "device_normals": None,
+        }
+        engine._get_local_dense_world_cloud = lambda *args, **kwargs: {
+            "body_id": 7,
+            "link_index": 0,
+            "link_name": "obstacle_link",
+            "points": np.array([[0.2, 0.0, 0.0]], dtype=float),
+            "normals": np.array([[-1.0, 0.0, 0.0]], dtype=float),
+            "local_mesh": None,
+            "world_pos": np.zeros(3, dtype=float),
+            "world_quat": np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+            "device_points": None,
+            "device_normals": None,
+        }
+
+        result = engine.query_link_to_body(
+            robot_body_id=1,
+            robot_link_index=0,
+            obstacle_body_id=7,
+            query_center_world=np.zeros(3, dtype=float),
+        )
+
+        self.assertIsNotNone(result)
+        self.assertTrue(np.allclose(result["point_on_obstacle"], [0.2, 0.0, 0.0]))
 
 
 if __name__ == "__main__":

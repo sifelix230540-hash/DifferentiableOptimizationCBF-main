@@ -54,6 +54,7 @@ class JakaRobot:
 
         self.ee_link_index = self.revolute_joints[-1]
         self.welding_gun_base_link_index = -1
+        self.robobase_link_index = -1
         self.welding_gun_links = []
         for joint_index in range(self.num_joints):
             link_name = p.getJointInfo(self.body_id, joint_index)[12].decode()
@@ -61,6 +62,8 @@ class JakaRobot:
                 self.ee_link_index = joint_index
             if link_name == "welding_gun_base":
                 self.welding_gun_base_link_index = joint_index
+            if link_name == "robobase":
+                self.robobase_link_index = joint_index
             if link_name in ("welding_gun_base", "weld_point"):
                 self.welding_gun_links.append(joint_index)
 
@@ -121,10 +124,14 @@ class JakaRobot:
     ) -> list[dict]:
         if getattr(self, "_surface_engine", None) is None:
             return []
+        query_center_world = None
+        if int(body_id) != int(self.body_id) and bool(getattr(self.config, "obstacle_local_dense_enabled", False)):
+            query_center_world, _ = self.get_robobase_pose()
         return self._surface_engine.get_visualization_clouds(
             int(body_id),
             link_indices=None if link_indices is None else [int(li) for li in link_indices],
             max_points_per_link=max_points_per_link,
+            query_center_world=query_center_world,
         )
 
     @staticmethod
@@ -150,6 +157,13 @@ class JakaRobot:
     def get_link_origin(self, link_index):
         state = p.getLinkState(self.body_id, link_index, computeForwardKinematics=True)
         return np.array(state[4], dtype=float)
+
+    def get_robobase_pose(self):
+        if int(self.robobase_link_index) < 0:
+            pos, quat = p.getBasePositionAndOrientation(self.body_id)
+            return np.array(pos, dtype=float), np.array(quat, dtype=float)
+        state = p.getLinkState(self.body_id, self.robobase_link_index, computeForwardKinematics=True)
+        return np.array(state[4], dtype=float), np.array(state[5], dtype=float)
 
     def _build_rest_poses(self, rest_poses=None):
         rest_full = list(self._ik_rest)
@@ -198,12 +212,16 @@ class JakaRobot:
 
     def get_closest_points_to_obstacle(self, link_index, obs_body_id, max_dist=1.0):
         if getattr(self, "_surface_engine", None) is not None:
+            query_center_world = None
+            if int(obs_body_id) != int(self.body_id) and bool(getattr(self.config, "obstacle_local_dense_enabled", False)):
+                query_center_world, _ = self.get_robobase_pose()
             result = self._surface_engine.query_link_to_body(
                 robot_body_id=self.body_id,
                 robot_link_index=int(link_index),
                 obstacle_body_id=int(obs_body_id),
                 obstacle_link_indices=self._surface_obstacle_links.get(int(obs_body_id)),
                 max_dist=max_dist,
+                query_center_world=query_center_world,
             )
             if result is not None:
                 return result
