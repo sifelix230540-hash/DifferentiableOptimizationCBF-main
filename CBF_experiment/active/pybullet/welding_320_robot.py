@@ -94,6 +94,12 @@ class JakaRobot:
     def get_link_name(self, link_index: int) -> str:
         return self.link_name_by_index.get(int(link_index), f"link_{int(link_index)}")
 
+    @staticmethod
+    def get_body_link_name(body_id: int, link_index: int) -> str:
+        if int(link_index) < 0:
+            return "base_link"
+        return p.getJointInfo(body_id, int(link_index))[12].decode()
+
     def get_joint_state(self):
         states = p.getJointStates(self.body_id, self.active_joints)
         return np.array([state[0] for state in states]), np.array([state[1] for state in states])
@@ -157,16 +163,41 @@ class JakaRobot:
         jt, _ = self.get_link_jacobian(link_index, q, dq)
         return normal @ jt
 
-    def get_closest_point_to_obstacle(self, link_index, obs_body_id, max_dist=1.0):
+    def get_closest_points_to_obstacle(self, link_index, obs_body_id, max_dist=1.0):
         contacts = p.getClosestPoints(self.body_id, obs_body_id, max_dist, linkIndexA=link_index)
         if not contacts:
             return None
         best = min(contacts, key=lambda contact: contact[8])
-        pos = np.array(best[5], dtype=float)
-        dist = float(best[8])
-        normal = np.array(best[7], dtype=float)
-        nl = np.linalg.norm(normal)
-        return pos, dist, (normal / nl if nl > 1e-9 else np.array([1.0, 0.0, 0.0], dtype=float))
+        obs_link_index = int(best[4])
+        point_on_link = np.array(best[5], dtype=float)
+        point_on_obstacle = np.array(best[6], dtype=float)
+        signed_dist = float(best[8])
+        normal_on_obstacle = np.array(best[7], dtype=float)
+        nl = np.linalg.norm(normal_on_obstacle)
+        if nl <= 1e-9:
+            fallback = point_on_link - point_on_obstacle
+            fl = np.linalg.norm(fallback)
+            normal_on_obstacle = fallback / fl if fl > 1e-9 else np.array([1.0, 0.0, 0.0], dtype=float)
+        else:
+            normal_on_obstacle = normal_on_obstacle / nl
+        return {
+            "obs_link_index": obs_link_index,
+            "obs_link_name": self.get_body_link_name(obs_body_id, obs_link_index),
+            "point_on_link": point_on_link,
+            "point_on_obstacle": point_on_obstacle,
+            "signed_dist": signed_dist,
+            "normal_on_obstacle": normal_on_obstacle,
+        }
+
+    def get_closest_point_to_obstacle(self, link_index, obs_body_id, max_dist=1.0):
+        closest = self.get_closest_points_to_obstacle(link_index, obs_body_id, max_dist=max_dist)
+        if closest is None:
+            return None
+        return (
+            closest["point_on_link"],
+            closest["signed_dist"],
+            closest["normal_on_obstacle"],
+        )
 
     def get_link_cbf_row_at_point(self, link_index, world_point, normal, q, dq):
         link_state = p.getLinkState(self.body_id, link_index, computeForwardKinematics=True)

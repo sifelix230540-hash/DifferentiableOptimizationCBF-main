@@ -43,6 +43,11 @@ class ExperimentConfig:
     camera_pitch: float = -26.0
     camera_target: tuple[float, float, float] = (0.30, 0.20, 0.60)
     print_every: int = 120
+    show_collision_meshes: bool = True
+    show_cbf_contacts: bool = True
+    cbf_contact_normal_length: float = 0.04
+    cbf_contact_cross_size: float = 0.006
+    cbf_contact_line_width: float = 2.0
 
     # 轨迹
     approach_duration: float = 6.0
@@ -115,6 +120,8 @@ class SimulationScene:
         self.reference_height = self._build_environment()
         self._draw_axes()
         self.status_text_id = None
+        self._collision_visual_specs: list[dict] = []
+        self._cbf_contact_debug_ids: list[int] = []
 
     def _build_environment(self) -> float:
         plane_id = p.loadURDF("plane.urdf")
@@ -154,6 +161,151 @@ class SimulationScene:
 
     def enable_rendering(self):
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+
+    @staticmethod
+    def _get_body_link_pose(body_id: int, link_index: int):
+        if link_index < 0:
+            return p.getBasePositionAndOrientation(body_id)
+        state = p.getLinkState(body_id, link_index, computeForwardKinematics=True)
+        # Collision-shape local pose is expressed in the link COM/inertial frame.
+        return state[0], state[1]
+
+    @staticmethod
+    def _decode_shape_filename(filename) -> str:
+        if isinstance(filename, (bytes, bytearray)):
+            return filename.decode("utf-8")
+        return str(filename)
+
+    def _create_visual_shape_from_collision(self, shape_data, rgba) -> int:
+        geom_type = int(shape_data[2])
+        dims = tuple(float(v) for v in shape_data[3])
+        filename = self._decode_shape_filename(shape_data[4])
+        if geom_type == p.GEOM_MESH:
+            return p.createVisualShape(
+                shapeType=p.GEOM_MESH,
+                fileName=filename,
+                meshScale=dims[:3],
+                rgbaColor=rgba,
+            )
+        if geom_type == p.GEOM_BOX:
+            return p.createVisualShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[0.5 * dims[0], 0.5 * dims[1], 0.5 * dims[2]],
+                rgbaColor=rgba,
+            )
+        if geom_type == p.GEOM_SPHERE:
+            return p.createVisualShape(shapeType=p.GEOM_SPHERE, radius=dims[0], rgbaColor=rgba)
+        if geom_type == p.GEOM_CYLINDER:
+            return p.createVisualShape(shapeType=p.GEOM_CYLINDER, radius=dims[1], length=dims[0], rgbaColor=rgba)
+        if geom_type == p.GEOM_CAPSULE:
+            return p.createVisualShape(shapeType=p.GEOM_CAPSULE, radius=dims[1], length=dims[0], rgbaColor=rgba)
+        return -1
+
+    def add_collision_mesh_visuals(self, body_id: int, rgba, link_indices: list[int] | None = None) -> int:
+        selected = None if link_indices is None else set(int(li) for li in link_indices)
+        created = 0
+        for link_index in range(-1, p.getNumJoints(body_id)):
+            if selected is not None and link_index not in selected:
+                continue
+            shape_datas = p.getCollisionShapeData(body_id, link_index)
+            if not shape_datas:
+                continue
+            world_pos, world_orn = self._get_body_link_pose(body_id, link_index)
+            for shape_data in shape_datas:
+                visual_shape_id = self._create_visual_shape_from_collision(shape_data, rgba)
+                if visual_shape_id < 0:
+                    continue
+                local_pos = tuple(float(v) for v in shape_data[5])
+                local_orn = tuple(float(v) for v in shape_data[6])
+                visual_pos, visual_orn = p.multiplyTransforms(world_pos, world_orn, local_pos, local_orn)
+                visual_body_id = p.createMultiBody(
+                    baseMass=0,
+                    baseVisualShapeIndex=visual_shape_id,
+                    basePosition=visual_pos,
+                    baseOrientation=visual_orn,
+                )
+                p.setCollisionFilterGroupMask(visual_body_id, -1, 0, 0)
+                self._collision_visual_specs.append({
+                    "body_id": int(body_id),
+                    "link_index": int(link_index),
+                    "local_pos": local_pos,
+                    "local_orn": local_orn,
+                    "visual_body_id": int(visual_body_id),
+                })
+                created += 1
+        return created
+
+    def update_collision_mesh_visuals(self):
+        for spec in self._collision_visual_specs:
+            world_pos, world_orn = self._get_body_link_pose(spec["body_id"], spec["link_index"])
+            visual_pos, visual_orn = p.multiplyTransforms(
+                world_pos,
+                world_orn,
+                spec["local_pos"],
+                spec["local_orn"],
+            )
+            p.resetBasePositionAndOrientation(spec["visual_body_id"], visual_pos, visual_orn)
+
+    def clear_cbf_contact_visuals(self):
+        for item_id in self._cbf_contact_debug_ids:
+            p.removeUserDebugItem(item_id)
+        self._cbf_contact_debug_ids.clear()
+
+    def _add_debug_cross(self, center, color, half_extent: float, width: float):
+        center = np.asarray(center, dtype=float)
+        segments = (
+            (center + np.array([half_extent, 0.0, 0.0]), center - np.array([half_extent, 0.0, 0.0])),
+            (center + np.array([0.0, half_extent, 0.0]), center - np.array([0.0, half_extent, 0.0])),
+            (center + np.array([0.0, 0.0, half_extent]), center - np.array([0.0, 0.0, half_extent])),
+        )
+        for start, end in segments:
+            self._cbf_contact_debug_ids.append(
+                p.addUserDebugLine(start.tolist(), end.tolist(), color, lineWidth=width)
+            )
+
+    def update_cbf_contact_visuals(self, contact_specs: list[dict]):
+        self.clear_cbf_contact_visuals()
+        for spec in contact_specs:
+            point_on_link = np.asarray(spec["point_on_link"], dtype=float)
+            point_on_obstacle = np.asarray(spec["point_on_obstacle"], dtype=float)
+            normal_on_link = np.asarray(spec["normal_on_link"], dtype=float)
+            normal_on_obstacle = np.asarray(spec["normal_on_obstacle"], dtype=float)
+            normal_length = float(spec["normal_length"])
+            line_width = float(spec.get("line_width", self.config.cbf_contact_line_width))
+            cross_size = float(spec.get("cross_size", self.config.cbf_contact_cross_size))
+            pair_color = spec.get("pair_color", [0.95, 0.75, 0.10])
+            label_color = spec.get("label_color", pair_color)
+
+            self._cbf_contact_debug_ids.append(
+                p.addUserDebugLine(point_on_link.tolist(), point_on_obstacle.tolist(), pair_color, lineWidth=line_width)
+            )
+            self._add_debug_cross(point_on_link, [0.95, 0.10, 0.10], cross_size, line_width)
+            self._add_debug_cross(point_on_obstacle, [0.10, 0.35, 1.00], cross_size, line_width)
+            self._cbf_contact_debug_ids.append(
+                p.addUserDebugLine(
+                    point_on_link.tolist(),
+                    (point_on_link + normal_length * normal_on_link).tolist(),
+                    [1.00, 0.20, 0.20],
+                    lineWidth=line_width,
+                )
+            )
+            self._cbf_contact_debug_ids.append(
+                p.addUserDebugLine(
+                    point_on_obstacle.tolist(),
+                    (point_on_obstacle + normal_length * normal_on_obstacle).tolist(),
+                    [0.10, 0.50, 1.00],
+                    lineWidth=line_width,
+                )
+            )
+            midpoint = 0.5 * (point_on_link + point_on_obstacle)
+            self._cbf_contact_debug_ids.append(
+                p.addUserDebugText(
+                    spec["label"],
+                    midpoint.tolist(),
+                    textColorRGB=label_color,
+                    textSize=1.0,
+                )
+            )
 
 
 def _prepare_package_urdf(
@@ -222,6 +374,56 @@ def _normalize(v: np.ndarray) -> np.ndarray:
     if n < 1e-9:
         return np.zeros_like(v)
     return v / n
+
+
+def _coerce_vec3(value) -> np.ndarray | None:
+    if value is None:
+        return None
+    arr = np.asarray(value, dtype=float).reshape(-1)
+    if arr.size != 3 or not np.all(np.isfinite(arr)):
+        return None
+    return arr
+
+
+def build_cbf_contact_visualization_specs(cbf_contacts: list[dict], normal_length: float = 0.04) -> list[dict]:
+    specs = []
+    for idx, contact in enumerate(cbf_contacts or []):
+        point_on_link = _coerce_vec3(contact.get("point_on_link"))
+        point_on_obstacle = _coerce_vec3(contact.get("point_on_obstacle"))
+        if point_on_link is None or point_on_obstacle is None:
+            continue
+
+        normal_on_obstacle = _coerce_vec3(contact.get("normal"))
+        if normal_on_obstacle is None or np.linalg.norm(normal_on_obstacle) < 1e-9:
+            normal_on_obstacle = point_on_link - point_on_obstacle
+        normal_on_obstacle = _normalize(normal_on_obstacle)
+        if np.linalg.norm(normal_on_obstacle) < 1e-9:
+            normal_on_obstacle = np.array([1.0, 0.0, 0.0], dtype=float)
+
+        h_val = float(contact.get("h_val", float("nan")))
+        link_name = str(contact.get("link_name", f"cbf_{idx}"))
+        obs_link_name = contact.get("obs_link_name")
+        label_prefix = (
+            f"{link_name} -> {obs_link_name}"
+            if obs_link_name not in (None, "", "?")
+            else link_name
+        )
+        pair_color = [0.95, 0.20, 0.20] if np.isfinite(h_val) and h_val < 0.0 else [0.95, 0.75, 0.10]
+        specs.append({
+            "point_on_link": point_on_link,
+            "point_on_obstacle": point_on_obstacle,
+            "normal_on_link": -normal_on_obstacle,
+            "normal_on_obstacle": normal_on_obstacle,
+            "normal_length": float(normal_length),
+            "label": (
+                f"{label_prefix} | h={h_val * 1000:.1f}mm"
+                if np.isfinite(h_val)
+                else label_prefix
+            ),
+            "pair_color": pair_color,
+            "label_color": pair_color,
+        })
+    return specs
 
 
 def _project_to_plane(v: np.ndarray, normal: np.ndarray) -> np.ndarray:

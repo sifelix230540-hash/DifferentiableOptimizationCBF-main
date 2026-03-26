@@ -7,6 +7,7 @@ import pybullet as p
 from CBF_experiment.active.pybullet.welding_320_common import (
     ExperimentConfig,
     SimulationScene,
+    build_cbf_contact_visualization_specs,
     build_weld_reference_quat,
 )
 from CBF_experiment.active.pybullet.welding_320_control import (
@@ -145,6 +146,29 @@ class AvoidanceExperiment:
         self.start_marker = self.scene.create_marker(0.014, (0.95, 0.15, 0.15, 0.85), start_pos.tolist())
         self.goal_marker = self.scene.create_marker(0.014, (0.15, 0.25, 0.95, 0.85), goal_pos.tolist())
 
+        if config.show_collision_meshes:
+            robot_collision_count = self.scene.add_collision_mesh_visuals(
+                self.robot.body_id,
+                rgba=(1.0, 0.45, 0.05, 0.18),
+            )
+            workpiece_collision_count = self.scene.add_collision_mesh_visuals(
+                self.workpiece.body_id,
+                rgba=(0.10, 0.45, 1.0, 0.18),
+            )
+            # region agent log
+            _append_debug_log(
+                "scene_setup",
+                "H13",
+                "welding_320_experiment.py:148",
+                "Collision mesh visualization enabled",
+                {
+                    "robot_collision_visual_count": int(robot_collision_count),
+                    "workpiece_collision_visual_count": int(workpiece_collision_count),
+                    "safety_margin": float(config.safety_margin),
+                },
+            )
+            # endregion
+
         self.controller = create_controller(self.robot, config, self.trajectory)
         self.prev_ee = ee_pos_init.copy()
         self.sim_step = 0
@@ -154,6 +178,17 @@ class AvoidanceExperiment:
     def _update_visuals(self, ee_pos, ref_pos, info, progress_value):
         self.scene.update_marker(self.ee_marker, ee_pos.tolist())
         self.scene.update_marker(self.ref_marker, ref_pos.tolist())
+        if self.config.show_collision_meshes:
+            self.scene.update_collision_mesh_visuals()
+        if self.config.show_cbf_contacts:
+            self.scene.update_cbf_contact_visuals(
+                build_cbf_contact_visualization_specs(
+                    info.get("cbf_contacts", []),
+                    normal_length=self.config.cbf_contact_normal_length,
+                )
+            )
+        else:
+            self.scene.clear_cbf_contact_visuals()
         if np.linalg.norm(ee_pos - self.prev_ee) > 1e-3:
             p.addUserDebugLine(self.prev_ee.tolist(), ee_pos.tolist(), [0.1, 0.8, 0.2], lineWidth=1.5)
             self.prev_ee = ee_pos.copy()

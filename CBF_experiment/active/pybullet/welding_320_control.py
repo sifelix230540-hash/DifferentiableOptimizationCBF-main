@@ -451,10 +451,12 @@ class MPCDCBFController:
             check_links = obs_links if obs_links is not None else self.robot.cbf_link_indices
             for link_index in check_links:
                 if use_mesh:
-                    cp = self.robot.get_closest_point_to_obstacle(link_index, obs.body_id)
-                    if cp is None:
+                    closest = self.robot.get_closest_points_to_obstacle(link_index, obs.body_id)
+                    if closest is None:
                         continue
-                    support_point, signed_dist, normal = cp
+                    support_point = closest["point_on_link"]
+                    signed_dist = closest["signed_dist"]
+                    normal = closest["normal_on_obstacle"]
                     h_val = signed_dist - self.config.safety_margin
                     h_vals.append(h_val)
                     grad_rows.append(self.robot.get_link_cbf_row_at_point(link_index, support_point, normal, q, dq))
@@ -464,10 +466,14 @@ class MPCDCBFController:
                         "is_ee_link": bool(link_index == self.robot.ee_link_index),
                         "is_welding_gun_link": bool(link_index in self.robot.welding_gun_links),
                         "obs_body_id": int(obs.body_id),
+                        "obs_link_index": int(closest["obs_link_index"]),
+                        "obs_link_name": str(closest["obs_link_name"]),
                         "use_mesh": True,
                         "signed_dist": float(signed_dist),
                         "h_val": float(h_val),
                         "normal": np.asarray(normal, dtype=float).tolist(),
+                        "point_on_link": np.asarray(closest["point_on_link"], dtype=float).tolist(),
+                        "point_on_obstacle": np.asarray(closest["point_on_obstacle"], dtype=float).tolist(),
                     })
                 else:
                     link_pos = self.robot.get_link_origin(link_index)
@@ -485,6 +491,8 @@ class MPCDCBFController:
                         "signed_dist": float(signed_dist),
                         "h_val": float(h_val),
                         "normal": np.asarray(normal, dtype=float).tolist(),
+                        "point_on_link": np.asarray(link_pos, dtype=float).tolist(),
+                        "point_on_obstacle": np.asarray(link_pos - signed_dist * np.asarray(normal, dtype=float), dtype=float).tolist(),
                     })
         self._last_cbf_meta = cbf_meta
         return grad_rows, h_vals
@@ -1042,6 +1050,7 @@ class MPCDCBFController:
             "tracking_error": float(np.linalg.norm(pos_err)),
             "orientation_error": float(np.linalg.norm(rot_err)),
             "progress_step": float(ds_ref),
+            "cbf_contacts": [dict(meta) for meta in self._last_cbf_meta],
             **dynamic_info,
         }
         self._cached_u = u_cmd
