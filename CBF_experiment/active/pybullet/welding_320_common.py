@@ -51,10 +51,10 @@ class ExperimentConfig:
     hold_duration: float = 3.0
     dq_limit: float = 1.0
     base_vel_limit: float = 0.4
-    position_gain: float = 8.0
+    position_gain: float = 1.0
     orientation_gain: float = 3.0
     use_mesh_cbf: bool = True
-    safety_margin: float = 0.02
+    safety_margin: float = 0.001
     q_nominal_tracking: float = 0.02
     use_dynamic_nominal_reference: bool = False
     dynamic_nominal_history_size: int = 15
@@ -70,9 +70,10 @@ class ExperimentConfig:
     # MPC
     N_mpc: int = 5
     mpc_dt: float = 0.04
-    gamma_dcbf: float = 0.15
+    gamma_dcbf: float = 1
     mpc_tracking_weight: float = 5.0
     mpc_orientation_tracking_weight: float = 0.2
+    mpc_terminal_orientation_window: float = 0.20
     mpc_control_weight: float = 0.2
     mpc_smooth_weight: float = 0.2
     mpc_replan_steps: int = 6

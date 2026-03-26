@@ -9,7 +9,11 @@ from CBF_experiment.active.pybullet.welding_320_common import (
     SimulationScene,
     build_weld_reference_quat,
 )
-from CBF_experiment.active.pybullet.welding_320_control import CartesianRRTNominalPlanner, create_controller
+from CBF_experiment.active.pybullet.welding_320_control import (
+    CartesianRRTNominalPlanner,
+    _append_debug_log,
+    create_controller,
+)
 from CBF_experiment.active.pybullet.welding_320_robot import JakaRobot, URDFObstacle, WorkpieceModel
 from CBF_experiment.active.pybullet.welding_320_trajectory import PathProgressTrajectory
 
@@ -187,6 +191,7 @@ class AvoidanceExperiment:
             while p.isConnected():
                 q, dq = self.robot.get_joint_state()
                 ee_pos, ee_quat = self.robot.get_ee_pose()
+                progress_prev = progress_exec
                 progress_proj = self.trajectory.project_progress(
                     ee_pos,
                     hint_progress=progress_exec,
@@ -208,6 +213,25 @@ class AvoidanceExperiment:
                 info["progress_proj"] = float(progress_proj)
                 info["lag_error"] = float(lag_error)
                 info["contour_error"] = float(contour_error)
+
+                # region agent log
+                _append_debug_log(
+                    f"solve_{self.controller._step_count}",
+                    "H9",
+                    "welding_320_experiment.py:205",
+                    "Progress projection snapshot",
+                    {
+                        "sim_step": int(self.sim_step),
+                        "progress_prev": float(progress_prev),
+                        "progress_proj": float(progress_proj),
+                        "progress_exec": float(progress_exec),
+                        "progress_jump": float(progress_exec - progress_prev),
+                        "ref_distance": float(np.linalg.norm(ref[0] - ee_pos)),
+                        "lag_error": float(lag_error),
+                        "contour_error": float(contour_error),
+                    },
+                )
+                # endregion
 
                 alpha_q = self.config.q_nominal_tracking
                 self.robot.q_nominal = (1 - alpha_q) * self.robot.q_nominal + alpha_q * q

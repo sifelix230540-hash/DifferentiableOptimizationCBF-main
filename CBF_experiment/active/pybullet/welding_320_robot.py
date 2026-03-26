@@ -34,9 +34,11 @@ class JakaRobot:
         self.active_joints = []
         self.prismatic_joints = []
         self.revolute_joints = []
+        self.link_name_by_index = {}
         for joint_index in range(self.num_joints):
             joint_info = p.getJointInfo(self.body_id, joint_index)
             joint_type = joint_info[2]
+            self.link_name_by_index[joint_index] = joint_info[12].decode()
             if joint_type == p.JOINT_PRISMATIC:
                 self.active_joints.append(joint_index)
                 self.prismatic_joints.append(joint_index)
@@ -88,6 +90,9 @@ class JakaRobot:
                 self._ik_rest[joint_index] = config.gantry_initial_q[axis_id]
 
         self.q_nominal = np.zeros(self.dof)
+
+    def get_link_name(self, link_index: int) -> str:
+        return self.link_name_by_index.get(int(link_index), f"link_{int(link_index)}")
 
     def get_joint_state(self):
         states = p.getJointStates(self.body_id, self.active_joints)

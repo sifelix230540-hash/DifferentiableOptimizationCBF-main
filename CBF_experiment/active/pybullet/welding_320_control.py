@@ -1,4 +1,7 @@
 from collections import deque
+import json
+from pathlib import Path
+import time
 
 import numpy as np
 from scipy.optimize import minimize
@@ -12,6 +15,22 @@ try:
     import pybullet_planning as pp
 except ImportError:
     pp = None
+
+DEBUG_LOG_PATH = Path(__file__).resolve().parents[3] / "debug-24afbb.log"
+
+
+def _append_debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict):
+    payload = {
+        "sessionId": "24afbb",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
 class CartesianRRTNominalPlanner:
@@ -267,11 +286,17 @@ class DynamicNominalReferenceMixer:
         nominal_positions: list[np.ndarray],
         normal: np.ndarray,
     ) -> np.ndarray:
-        tangent = self._project_to_plane(exec_delta, normal)
-        tangent = self._safe_normalize(tangent)
-        if tangent is None and nominal_positions:
+        exec_tangent = self._safe_normalize(self._project_to_plane(exec_delta, normal))
+        nominal_tangent = None
+        if nominal_positions:
             nominal_delta = nominal_positions[0] - ee_pos
-            tangent = self._safe_normalize(self._project_to_plane(nominal_delta, normal))
+            nominal_tangent = self._safe_normalize(self._project_to_plane(nominal_delta, normal))
+
+        tangent = exec_tangent
+        if tangent is None:
+            tangent = nominal_tangent
+        elif nominal_tangent is not None and float(np.dot(tangent, nominal_tangent)) < 0.0:
+            tangent = nominal_tangent
         if tangent is None:
             tangent = normal
 
@@ -307,6 +332,8 @@ class DynamicNominalReferenceMixer:
             "dynamic_nominal_exec_motion": exec_motion,
             "dynamic_nominal_tracking_error": tracking_error,
             "dynamic_nominal_stall_active": False,
+            "dynamic_escape_dir": None,
+            "dynamic_obstacle_normal": None,
         }
         if (not self.config.use_dynamic_nominal_reference) or signed_dist is None or obstacle_normal is None:
             return nominal_positions, info
@@ -375,15 +402,18 @@ class DynamicNominalReferenceMixer:
             )
             anchor = nominal_pos
 
-        mixed_positions = [
+        mixed_positions = [nominal_positions[0].copy()]
+        mixed_positions.extend(
             (1.0 - weight) * nominal_pos + weight * escape_pos
-            for nominal_pos, escape_pos in zip(nominal_positions, escape_positions)
-        ]
+            for nominal_pos, escape_pos in zip(nominal_positions[1:], escape_positions[1:])
+        )
         offset = mixed_positions[0] - nominal_positions[0] if mixed_positions else np.zeros(3)
         info.update({
             "dynamic_nominal_weight": weight,
             "dynamic_nominal_stall_active": self._stall_active,
             "dynamic_reference_offset_norm": float(np.linalg.norm(offset)),
+            "dynamic_escape_dir": np.asarray(escape_dir, dtype=float).tolist(),
+            "dynamic_obstacle_normal": np.asarray(normal, dtype=float).tolist(),
         })
         return mixed_positions, info
 
@@ -398,6 +428,7 @@ class MPCDCBFController:
         self.N = config.N_mpc
         self.trajectory = trajectory
         self.reference_mixer = DynamicNominalReferenceMixer(config)
+        self._last_cbf_meta: list[dict] = []
         self._prev_sol: np.ndarray | None = None
         self._cached_u: np.ndarray | None = None
         self._cached_info: dict | None = None
@@ -413,6 +444,7 @@ class MPCDCBFController:
 
     def _build_cbf_data(self, q, dq, obstacles):
         grad_rows, h_vals = [], []
+        cbf_meta = []
         for obs in obstacles:
             use_mesh = self.config.use_mesh_cbf and obs.body_id >= 0
             obs_links = getattr(obs, "cbf_link_indices", None)
@@ -423,16 +455,41 @@ class MPCDCBFController:
                     if cp is None:
                         continue
                     support_point, signed_dist, normal = cp
-                    h_vals.append(signed_dist - self.config.safety_margin)
+                    h_val = signed_dist - self.config.safety_margin
+                    h_vals.append(h_val)
                     grad_rows.append(self.robot.get_link_cbf_row_at_point(link_index, support_point, normal, q, dq))
+                    cbf_meta.append({
+                        "link_index": int(link_index),
+                        "link_name": self.robot.get_link_name(link_index),
+                        "is_ee_link": bool(link_index == self.robot.ee_link_index),
+                        "is_welding_gun_link": bool(link_index in self.robot.welding_gun_links),
+                        "obs_body_id": int(obs.body_id),
+                        "use_mesh": True,
+                        "signed_dist": float(signed_dist),
+                        "h_val": float(h_val),
+                        "normal": np.asarray(normal, dtype=float).tolist(),
+                    })
                 else:
                     link_pos = self.robot.get_link_origin(link_index)
                     signed_dist, normal = obs.compute_distance(link_pos)
-                    h_vals.append(signed_dist - self.config.safety_margin)
+                    h_val = signed_dist - self.config.safety_margin
+                    h_vals.append(h_val)
                     grad_rows.append(self.robot.get_link_cbf_row(link_index, normal, q, dq))
+                    cbf_meta.append({
+                        "link_index": int(link_index),
+                        "link_name": self.robot.get_link_name(link_index),
+                        "is_ee_link": bool(link_index == self.robot.ee_link_index),
+                        "is_welding_gun_link": bool(link_index in self.robot.welding_gun_links),
+                        "obs_body_id": int(getattr(obs, "body_id", -1)),
+                        "use_mesh": False,
+                        "signed_dist": float(signed_dist),
+                        "h_val": float(h_val),
+                        "normal": np.asarray(normal, dtype=float).tolist(),
+                    })
+        self._last_cbf_meta = cbf_meta
         return grad_rows, h_vals
 
-    def _build_qp(self, ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals):
+    def _build_qp(self, ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals, orientation_weight):
         n, N = self.n, self.N
         mdt = self.config.mpc_dt
         cfg = self.config
@@ -443,14 +500,14 @@ class MPCDCBFController:
         idx = np.arange(N)
         weight_mat = (N - np.maximum(idx[:, None], idx[None, :])).astype(float)
         h_mat = 2.0 * cfg.mpc_tracking_weight * np.kron(weight_mat, jtj_pos)
-        h_mat += 2.0 * cfg.mpc_orientation_tracking_weight * np.kron(weight_mat, jtj_rot)
+        h_mat += 2.0 * orientation_weight * np.kron(weight_mat, jtj_rot)
 
         c_vecs = np.array([ee_pos - ref_positions[k] for k in range(N)])
         c_suffix = np.cumsum(c_vecs[::-1], axis=0)[::-1]
         f_vec = 2.0 * cfg.mpc_tracking_weight * mdt * (c_suffix @ j_pos).ravel()
         rot_vecs = -np.array(ref_rotvecs, dtype=float)
         rot_suffix = np.cumsum(rot_vecs[::-1], axis=0)[::-1]
-        f_vec += 2.0 * cfg.mpc_orientation_tracking_weight * mdt * (rot_suffix @ j_rot).ravel()
+        f_vec += 2.0 * orientation_weight * mdt * (rot_suffix @ j_rot).ravel()
 
         h_mat += 2.0 * cfg.mpc_control_weight * np.eye(dim)
         if N > 1:
@@ -486,17 +543,20 @@ class MPCDCBFController:
             obs_body_id = getattr(obs, "body_id", -1)
             if obs_body_id < 0:
                 continue
-            closest = self.robot.get_closest_point_to_obstacle(
-                self.robot.ee_link_index,
-                obs_body_id,
-                max_dist=max_dist,
-            )
-            if closest is None:
-                continue
-            _, signed_dist, normal = closest
-            if best_signed_dist is None or signed_dist < best_signed_dist:
-                best_signed_dist = float(signed_dist)
-                best_normal = np.array(normal, dtype=float)
+            obs_links = getattr(obs, "cbf_link_indices", None)
+            check_links = obs_links if obs_links is not None else self.robot.cbf_link_indices
+            for link_index in check_links:
+                closest = self.robot.get_closest_point_to_obstacle(
+                    link_index,
+                    obs_body_id,
+                    max_dist=max_dist,
+                )
+                if closest is None:
+                    continue
+                _, signed_dist, normal = closest
+                if best_signed_dist is None or signed_dist < best_signed_dist:
+                    best_signed_dist = float(signed_dist)
+                    best_normal = np.array(normal, dtype=float)
         return best_signed_dist, best_normal
 
     def solve(
@@ -513,7 +573,32 @@ class MPCDCBFController:
         current_progress=0.0,
     ):
         self._step_count += 1
-        if self._cached_u is not None and self._step_count % self.config.mpc_replan_steps != 0:
+        run_id = f"solve_{self._step_count}"
+        can_use_cache = (
+            self._cached_u is not None
+            and self._step_count % self.config.mpc_replan_steps != 0
+            and self._cached_info is not None
+            and float(self._cached_info.get("min_h", 1.0)) >= 0.0
+            and not bool(self._cached_info.get("dynamic_nominal_stall_active", False))
+        )
+        if can_use_cache:
+            # region agent log
+            _append_debug_log(
+                run_id,
+                "H4",
+                "welding_320_control.py:516",
+                "Returning cached control",
+                {
+                    "step_count": int(self._step_count),
+                    "replan_steps": int(self.config.mpc_replan_steps),
+                    "cached_u_norm": float(np.linalg.norm(self._cached_u)),
+                    "cached_status": str(self._cached_info.get("status", "unknown")) if self._cached_info else "missing",
+                    "cached_stall_active": bool(self._cached_info.get("dynamic_nominal_stall_active", False))
+                    if self._cached_info
+                    else False,
+                },
+            )
+            # endregion
             return self._cached_u, self._cached_info
 
         n, N = self.n, self.N
@@ -521,6 +606,7 @@ class MPCDCBFController:
         j_full = self.robot.get_ee_jacobian(q, dq)
         j_pos = j_full[:3]
         j_rot = j_full[3:]
+        singular_values = np.linalg.svd(j_full, compute_uv=False)
 
         ref_positions = []
         ref_rotvecs = []
@@ -532,23 +618,99 @@ class MPCDCBFController:
             ref_positions.append(pk)
             ref_rotvecs.append(quaternion_error_rotvec(ee_quat, qk))
 
+        original_ref_pos = np.array(ref_pos, dtype=float)
+        original_ref_positions = [np.array(pk, dtype=float) for pk in ref_positions]
+
         dynamic_signed_dist, dynamic_normal = self._get_dynamic_nominal_hint(obstacles)
         mixed_refs, dynamic_info = self.reference_mixer.mix_positions(
             ee_pos=np.array(ee_pos, dtype=float),
             current_progress=float(current_progress),
-            nominal_positions=[np.array(ref_pos, dtype=float)] + ref_positions,
+            nominal_positions=[original_ref_pos.copy()] + [pk.copy() for pk in original_ref_positions],
             signed_dist=dynamic_signed_dist,
             obstacle_normal=dynamic_normal,
         )
         ref_pos = mixed_refs[0]
         ref_positions = mixed_refs[1:]
+
+        remaining_progress = max(self.trajectory.progress_end - float(current_progress), 0.0)
+        orientation_phase_ratio = float(
+            np.clip(
+                1.0 - remaining_progress / max(cfg.mpc_terminal_orientation_window, 1e-6),
+                0.0,
+                1.0,
+            )
+        )
+        active_orientation_weight = cfg.mpc_orientation_tracking_weight * orientation_phase_ratio
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H2",
+            "welding_320_control.py:555",
+            "Reference and Jacobian snapshot",
+            {
+                "step_count": int(self._step_count),
+                "current_progress": float(current_progress),
+                "ref_delta_norm": float(np.linalg.norm(ref_pos - ee_pos)),
+                "ref_lin_speed": float(np.linalg.norm(ref_lin_vel)),
+                "jacobian_pos_norm": float(np.linalg.norm(j_pos)),
+                "jacobian_rot_norm": float(np.linalg.norm(j_rot)),
+                "jacobian_sigma_max": float(singular_values[0]) if singular_values.size else 0.0,
+                "jacobian_sigma_min": float(singular_values[-1]) if singular_values.size else 0.0,
+                "dynamic_weight": float(dynamic_info.get("dynamic_nominal_weight", 0.0)),
+                "dynamic_stall_active": bool(dynamic_info.get("dynamic_nominal_stall_active", False)),
+                "dynamic_offset_norm": float(dynamic_info.get("dynamic_reference_offset_norm", 0.0)),
+                "active_orientation_weight": float(active_orientation_weight),
+                "orientation_phase_ratio": float(orientation_phase_ratio),
+            },
+        )
+        # endregion
+
+        original_step_cos = 0.0
+        mixed_step_cos = 0.0
+        if original_ref_positions:
+            original_ref_step = original_ref_positions[0] - original_ref_pos
+            original_ref_err = original_ref_pos - ee_pos
+            original_step_cos = float(
+                np.dot(original_ref_step, original_ref_err)
+                / max(np.linalg.norm(original_ref_step) * np.linalg.norm(original_ref_err), 1e-9)
+            )
         if ref_positions:
-            ref_lin_vel = (ref_positions[0] - ref_pos) / max(cfg.mpc_dt, 1e-6)
+            mixed_ref_step = ref_positions[0] - ref_pos
+            mixed_ref_err = ref_pos - ee_pos
+            mixed_step_cos = float(
+                np.dot(mixed_ref_step, mixed_ref_err)
+                / max(np.linalg.norm(mixed_ref_step) * np.linalg.norm(mixed_ref_err), 1e-9)
+            )
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H10",
+            "welding_320_control.py:592",
+            "Reference geometry comparison",
+            {
+                "step_count": int(self._step_count),
+                "original_ref_err_norm": float(np.linalg.norm(original_ref_pos - ee_pos)),
+                "mixed_ref_err_norm": float(np.linalg.norm(ref_pos - ee_pos)),
+                "original_step_cos": original_step_cos,
+                "mixed_step_cos": mixed_step_cos,
+                "dynamic_weight": float(dynamic_info.get("dynamic_nominal_weight", 0.0)),
+                "remaining_progress": float(remaining_progress),
+                "orientation_phase_ratio": float(orientation_phase_ratio),
+            },
+        )
+        # endregion
 
         grad_rows, h_vals = self._build_cbf_data(q, dq, obstacles)
         min_h = float(np.min(h_vals)) if h_vals else 1.0
+        worst_cbf = None
+        if h_vals:
+            worst_idx = int(np.argmin(h_vals))
+            worst_cbf = dict(self._last_cbf_meta[worst_idx])
+            worst_cbf["cbf_index"] = worst_idx
         h_mat, f_vec, a_cbf, b_cbf = self._build_qp(
-            ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals
+            ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals, active_orientation_weight
         )
 
         constraints = []
@@ -559,19 +721,84 @@ class MPCDCBFController:
                 "jac": lambda x: a_cbf,
             })
 
+        pos_err = ref_pos - ee_pos
+        rot_err = quaternion_error_rotvec(ee_quat, ref_quat)
+        xdot_nom_pos = ref_lin_vel + cfg.position_gain * pos_err
+        xdot_nom_rot = ref_ang_vel + cfg.orientation_gain * rot_err
+        xdot_nom = np.concatenate([
+            xdot_nom_pos,
+            xdot_nom_rot,
+        ])
+        u_nom = np.clip(np.linalg.lstsq(j_pos, xdot_nom_pos, rcond=None)[0], self._lb, self._ub)
+        ee_nom_vel = j_pos @ u_nom
+        ee_nom_rot = j_rot @ u_nom
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H8",
+            "welding_320_control.py:666",
+            "Nominal inverse-kinematics breakdown",
+            {
+                "step_count": int(self._step_count),
+                "pos_err_norm": float(np.linalg.norm(pos_err)),
+                "rot_err_norm": float(np.linalg.norm(rot_err)),
+                "ref_lin_speed": float(np.linalg.norm(ref_lin_vel)),
+                "ref_ang_speed": float(np.linalg.norm(ref_ang_vel)),
+                "xdot_nom_lin_speed": float(np.linalg.norm(xdot_nom[:3])),
+                "xdot_nom_rot_speed": float(np.linalg.norm(xdot_nom[3:])),
+                "ee_nom_lin_speed": float(np.linalg.norm(ee_nom_vel)),
+                "ee_nom_rot_speed": float(np.linalg.norm(ee_nom_rot)),
+                "nominal_solver_mode": "position_only_lstsq",
+                "xdot_nom_vs_pos_err_cos": float(
+                    np.dot(xdot_nom[:3], pos_err)
+                    / max(np.linalg.norm(xdot_nom[:3]) * np.linalg.norm(pos_err), 1e-9)
+                ),
+                "ee_nom_vs_pos_err_cos": float(
+                    np.dot(ee_nom_vel, pos_err)
+                    / max(np.linalg.norm(ee_nom_vel) * np.linalg.norm(pos_err), 1e-9)
+                ),
+                "ref_vel_vs_pos_err_cos": float(
+                    np.dot(ref_lin_vel, pos_err)
+                    / max(np.linalg.norm(ref_lin_vel) * np.linalg.norm(pos_err), 1e-9)
+                ),
+                "nominal_lin_residual": float(np.linalg.norm(ee_nom_vel - xdot_nom[:3])),
+                "nominal_rot_residual": float(np.linalg.norm(ee_nom_rot - xdot_nom[3:])),
+            },
+        )
+        # endregion
+
         if self._prev_sol is not None:
             x0 = np.empty(n * N)
             x0[: (N - 1) * n] = self._prev_sol[n:]
             x0[(N - 1) * n :] = self._prev_sol[(N - 1) * n :]
         else:
-            pos_err = ref_pos - ee_pos
-            rot_err = quaternion_error_rotvec(ee_quat, ref_quat)
-            xdot = np.concatenate([
-                ref_lin_vel + cfg.position_gain * pos_err,
-                ref_ang_vel + cfg.orientation_gain * rot_err,
-            ])
-            u0 = np.clip(np.linalg.lstsq(j_full, xdot, rcond=None)[0], self._lb, self._ub)
-            x0 = np.tile(u0, N)
+            x0 = np.tile(u_nom, N)
+
+        zero_constraints = b_cbf if len(grad_rows) > 0 else np.array([], dtype=float)
+        zero_feasible = bool(np.all(zero_constraints >= -1e-9)) if zero_constraints.size else True
+        x0_constraint_margin = float(np.min(a_cbf @ x0 + b_cbf)) if len(grad_rows) > 0 else float("inf")
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H3",
+            "welding_320_control.py:604",
+            "QP pre-solve feasibility snapshot",
+            {
+                "step_count": int(self._step_count),
+                "min_h": float(min_h),
+                "cbf_count": int(len(grad_rows)),
+                "zero_feasible": bool(zero_feasible),
+                "zero_constraint_margin": float(np.min(zero_constraints)) if zero_constraints.size else float("inf"),
+                "x0_norm": float(np.linalg.norm(x0)),
+                "x0_constraint_margin": x0_constraint_margin,
+                "f_vec_norm": float(np.linalg.norm(f_vec)),
+                "h_mat_norm": float(np.linalg.norm(h_mat)),
+                "worst_cbf": worst_cbf,
+            },
+        )
+        # endregion
 
         res = minimize(
             lambda x: 0.5 * x @ h_mat @ x + f_vec @ x,
@@ -591,8 +818,223 @@ class MPCDCBFController:
             u_cmd = np.clip(x0[:n], self._lb, self._ub)
             status = "mpc_fallback"
 
-        pos_err = ref_pos - ee_pos
-        rot_err = quaternion_error_rotvec(ee_quat, ref_quat)
+        tightest_constraint = None
+        if len(grad_rows) > 0:
+            solved_margin = a_cbf @ res.x + b_cbf if hasattr(res, "x") else a_cbf @ x0 + b_cbf
+            tight_row = int(np.argmin(solved_margin))
+            tightest_constraint = {
+                "row_index": tight_row,
+                "margin": float(solved_margin[tight_row]),
+                "cbf_index": int(tight_row // N),
+                "horizon_step": int(tight_row % N),
+            }
+            if tightest_constraint["cbf_index"] < len(self._last_cbf_meta):
+                tightest_constraint.update(self._last_cbf_meta[tightest_constraint["cbf_index"]])
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H1",
+            "welding_320_control.py:640",
+            "QP solve result",
+            {
+                "step_count": int(self._step_count),
+                "solver_success": bool(res.success),
+                "solver_status": int(getattr(res, "status", -1)),
+                "status_label": status,
+                "objective_value": float(res.fun) if hasattr(res, "fun") else float("nan"),
+                "u_cmd_norm": float(np.linalg.norm(u_cmd)),
+                "u_cmd_max_abs": float(np.max(np.abs(u_cmd))) if np.size(u_cmd) else 0.0,
+                "x0_norm": float(np.linalg.norm(x0)),
+                "min_h": float(min_h),
+                "zero_feasible": bool(zero_feasible),
+                "tightest_constraint": tightest_constraint,
+            },
+        )
+        # endregion
+
+        ee_cmd_vel = j_pos @ u_cmd
+        pos_err_norm = float(np.linalg.norm(pos_err))
+        task_dir = pos_err / pos_err_norm if pos_err_norm > 1e-9 else np.zeros(3, dtype=float)
+        escape_dir = np.array(dynamic_info.get("dynamic_escape_dir") or np.zeros(3), dtype=float)
+        obstacle_normal = np.array(dynamic_info.get("dynamic_obstacle_normal") or np.zeros(3), dtype=float)
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H12",
+            "welding_320_control.py:847",
+            "Dynamic escape-vs-task snapshot",
+            {
+                "step_count": int(self._step_count),
+                "stall_active": bool(dynamic_info.get("dynamic_nominal_stall_active", False)),
+                "dynamic_weight": float(dynamic_info.get("dynamic_nominal_weight", 0.0)),
+                "signed_dist": float(dynamic_info.get("dynamic_nominal_signed_dist", float("inf"))),
+                "escape_dir": escape_dir.tolist(),
+                "obstacle_normal": obstacle_normal.tolist(),
+                "escape_vs_task_cos": float(
+                    np.dot(escape_dir, task_dir)
+                    / max(np.linalg.norm(escape_dir) * np.linalg.norm(task_dir), 1e-9)
+                ),
+                "normal_vs_task_cos": float(
+                    np.dot(obstacle_normal, task_dir)
+                    / max(np.linalg.norm(obstacle_normal) * np.linalg.norm(task_dir), 1e-9)
+                ),
+            },
+        )
+        # endregion
+
+        cbf_motion_summary = []
+        if len(grad_rows) > 0:
+            for cbf_idx, grad in enumerate(grad_rows):
+                current_margin = float(cfg.mpc_dt * np.dot(grad, u_cmd) + cfg.gamma_dcbf * h_vals[cbf_idx])
+                meta = dict(self._last_cbf_meta[cbf_idx]) if cbf_idx < len(self._last_cbf_meta) else {}
+                meta.update({
+                    "cbf_index": int(cbf_idx),
+                    "grad_dot_u": float(np.dot(grad, u_cmd)),
+                    "current_margin": current_margin,
+                })
+                cbf_motion_summary.append(meta)
+            cbf_motion_summary.sort(key=lambda item: item["current_margin"])
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H5",
+            "welding_320_control.py:664",
+            "Command-vs-CBF motion summary",
+            {
+                "step_count": int(self._step_count),
+                "ee_cmd_speed": float(np.linalg.norm(ee_cmd_vel)),
+                "task_progress_rate": float(np.dot(ee_cmd_vel, task_dir)),
+                "task_alignment_cos": float(
+                    np.dot(ee_cmd_vel, task_dir) / max(np.linalg.norm(ee_cmd_vel), 1e-9)
+                ),
+                "negative_h_count": int(sum(1 for h in h_vals if h < 0.0)),
+                "active_cbf_count": int(sum(1 for item in cbf_motion_summary if item["current_margin"] <= 1e-6)),
+                "tightest_current_cbfs": cbf_motion_summary[:3],
+            },
+        )
+        # endregion
+
+        nominal_cbf_summary = []
+        if len(grad_rows) > 0:
+            for cbf_idx, grad in enumerate(grad_rows):
+                nominal_margin = float(cfg.mpc_dt * np.dot(grad, u_nom) + cfg.gamma_dcbf * h_vals[cbf_idx])
+                nominal_cbf_summary.append({
+                    "cbf_index": int(cbf_idx),
+                    "grad_dot_u_nom": float(np.dot(grad, u_nom)),
+                    "nominal_margin": nominal_margin,
+                })
+            nominal_cbf_summary.sort(key=lambda item: item["nominal_margin"])
+
+        # region agent log
+        _append_debug_log(
+            run_id,
+            "H6",
+            "welding_320_control.py:690",
+            "Nominal-vs-constrained command comparison",
+            {
+                "step_count": int(self._step_count),
+                "u_nom_norm": float(np.linalg.norm(u_nom)),
+                "u_cmd_norm": float(np.linalg.norm(u_cmd)),
+                "u_diff_norm": float(np.linalg.norm(u_cmd - u_nom)),
+                "ee_nom_speed": float(np.linalg.norm(ee_nom_vel)),
+                "ee_cmd_speed": float(np.linalg.norm(ee_cmd_vel)),
+                "nominal_task_progress_rate": float(np.dot(ee_nom_vel, task_dir)),
+                "command_task_progress_rate": float(np.dot(ee_cmd_vel, task_dir)),
+                "nominal_task_alignment_cos": float(
+                    np.dot(ee_nom_vel, task_dir) / max(np.linalg.norm(ee_nom_vel), 1e-9)
+                ),
+                "command_task_alignment_cos": float(
+                    np.dot(ee_cmd_vel, task_dir) / max(np.linalg.norm(ee_cmd_vel), 1e-9)
+                ),
+                "tightest_nominal_cbfs": nominal_cbf_summary[:3],
+            },
+        )
+        # endregion
+
+        obj_u = None
+        try:
+            obj_x = np.linalg.solve(h_mat + 1e-9 * np.eye(h_mat.shape[0]), -f_vec)
+            obj_u = np.clip(obj_x[:n], self._lb, self._ub)
+        except np.linalg.LinAlgError:
+            obj_u = None
+
+        if obj_u is not None:
+            ee_obj_vel = j_pos @ obj_u
+            obj_cbf_summary = []
+            if len(grad_rows) > 0:
+                for cbf_idx, grad in enumerate(grad_rows):
+                    obj_margin = float(cfg.mpc_dt * np.dot(grad, obj_u) + cfg.gamma_dcbf * h_vals[cbf_idx])
+                    obj_cbf_summary.append({
+                        "cbf_index": int(cbf_idx),
+                        "grad_dot_u_obj": float(np.dot(grad, obj_u)),
+                        "obj_margin": obj_margin,
+                    })
+                obj_cbf_summary.sort(key=lambda item: item["obj_margin"])
+
+            mdt = cfg.mpc_dt
+            jtj_pos = mdt ** 2 * (j_pos.T @ j_pos)
+            idx = np.arange(N)
+            weight_mat = (N - np.maximum(idx[:, None], idx[None, :])).astype(float)
+            h_pos_only = 2.0 * cfg.mpc_tracking_weight * np.kron(weight_mat, jtj_pos)
+            h_pos_only += 2.0 * cfg.mpc_control_weight * np.eye(h_pos_only.shape[0])
+            if N > 1:
+                diff = np.zeros((N - 1, N))
+                for k in range(N - 1):
+                    diff[k, k] = -1.0
+                    diff[k, k + 1] = 1.0
+                h_pos_only += 2.0 * cfg.mpc_smooth_weight * np.kron(diff.T @ diff, np.eye(n))
+            c_vecs = np.array([ee_pos - ref_positions[k] for k in range(N)])
+            c_suffix = np.cumsum(c_vecs[::-1], axis=0)[::-1]
+            f_pos_only = 2.0 * cfg.mpc_tracking_weight * mdt * (c_suffix @ j_pos).ravel()
+            obj_pos_x = np.linalg.solve(h_pos_only + 1e-9 * np.eye(h_pos_only.shape[0]), -f_pos_only)
+            obj_pos_u = np.clip(obj_pos_x[:n], self._lb, self._ub)
+            ee_obj_pos_vel = j_pos @ obj_pos_u
+
+            # region agent log
+            _append_debug_log(
+                run_id,
+                "H7",
+                "welding_320_control.py:720",
+                "Objective-only command comparison",
+                {
+                    "step_count": int(self._step_count),
+                    "u_obj_norm": float(np.linalg.norm(obj_u)),
+                    "u_cmd_norm": float(np.linalg.norm(u_cmd)),
+                    "obj_vs_cmd_diff_norm": float(np.linalg.norm(obj_u - u_cmd)),
+                    "obj_task_progress_rate": float(np.dot(ee_obj_vel, task_dir)),
+                    "obj_task_alignment_cos": float(
+                        np.dot(ee_obj_vel, task_dir) / max(np.linalg.norm(ee_obj_vel), 1e-9)
+                    ),
+                    "tightest_obj_cbfs": obj_cbf_summary[:3],
+                },
+            )
+            # endregion
+
+            # region agent log
+            _append_debug_log(
+                run_id,
+                "H11",
+                "welding_320_control.py:748",
+                "Position-vs-full objective comparison",
+                {
+                    "step_count": int(self._step_count),
+                    "u_obj_pos_norm": float(np.linalg.norm(obj_pos_u)),
+                    "u_obj_full_norm": float(np.linalg.norm(obj_u)),
+                    "obj_pos_task_progress_rate": float(np.dot(ee_obj_pos_vel, task_dir)),
+                    "obj_full_task_progress_rate": float(np.dot(ee_obj_vel, task_dir)),
+                    "obj_pos_alignment_cos": float(
+                        np.dot(ee_obj_pos_vel, task_dir) / max(np.linalg.norm(ee_obj_pos_vel), 1e-9)
+                    ),
+                    "obj_full_alignment_cos": float(
+                        np.dot(ee_obj_vel, task_dir) / max(np.linalg.norm(ee_obj_vel), 1e-9)
+                    ),
+                },
+            )
+            # endregion
+
         info = {
             "min_h": min_h,
             "max_slack": 0.0,
