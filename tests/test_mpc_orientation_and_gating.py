@@ -23,6 +23,20 @@ class DummyRobot:
     n_revo = 2
 
 
+class DummyProgressTrajectory:
+    progress_end = 3.0
+
+    def __init__(self):
+        self.segment_end_progress = [1.0, 2.0, 3.0]
+
+    def current_segment_index(self, s: float) -> int:
+        if s < 1.0:
+            return 0
+        if s < 2.0:
+            return 1
+        return 2
+
+
 class MPCOrientationTests(unittest.TestCase):
     def test_build_qp_includes_orientation_cost(self):
         module = load_module()
@@ -41,11 +55,23 @@ class MPCOrientationTests(unittest.TestCase):
         ref_rotvecs = [np.array([0.3, -0.2, 0.0]) for _ in range(cfg.N_mpc)]
 
         h_mat, f_vec, _, _ = controller._build_qp(
-            ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, [], []
+            ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, [], [], cfg.mpc_orientation_tracking_weight
         )
 
         self.assertGreater(np.linalg.norm(h_mat), 0.0)
         self.assertGreater(np.linalg.norm(f_vec), 0.0)
+
+    def test_orientation_weight_is_full_during_weld_segment(self):
+        module = load_module()
+        cfg = module.ExperimentConfig()
+        cfg.mpc_orientation_tracking_weight = 4.0
+        cfg.mpc_terminal_orientation_window = 1.0
+        controller = module.MPCDCBFController(DummyRobot(), cfg, DummyProgressTrajectory())
+
+        active_weight, phase_ratio = controller._compute_active_orientation_weight(current_progress=1.5)
+
+        self.assertAlmostEqual(active_weight, 4.0, places=6)
+        self.assertAlmostEqual(phase_ratio, 1.0, places=6)
 
 
 class SimplifiedModuleSurfaceTests(unittest.TestCase):

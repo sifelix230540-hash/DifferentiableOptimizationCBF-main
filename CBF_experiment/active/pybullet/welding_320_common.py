@@ -30,7 +30,7 @@ class ExperimentConfig:
         r"\DifferentiableOptimizationCBF-main\assets\cad_exports\model_CAD\scene\urdf"
         r"\中组立0725(1).stp.SLDASM.urdf"
     )
-    workpiece_position: tuple[float, float, float] = (-3, 5.0, 0.10)
+    workpiece_position: tuple[float, float, float] = (0, 5.0, 0.10)
     workpiece_orientation_deg: tuple[float, float, float] = (0.0, 0.0, 0)
     ignore_all_collisions: bool = False
     start_link_name: str = "l2"
@@ -95,7 +95,7 @@ class ExperimentConfig:
     use_mesh_cbf: bool = True
     safety_margin: float = 0.005
     q_nominal_tracking: float = 0.02
-    use_dynamic_nominal_reference: bool = True
+    use_dynamic_nominal_reference: bool = False
     dynamic_nominal_history_size: int = 15
     dynamic_nominal_progress_epsilon: float = 0.03
     dynamic_nominal_exec_motion_trigger: float = 1e-4

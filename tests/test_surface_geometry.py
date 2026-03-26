@@ -293,6 +293,71 @@ class SurfaceLocalDensePreferenceTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(np.allclose(result["point_on_obstacle"], [0.2, 0.0, 0.0]))
 
+    def test_query_marks_penetration_negative_when_any_local_candidate_is_inside(self):
+        import trimesh
+
+        cfg = ExperimentConfig()
+        engine = SurfaceDistanceEngine(cfg)
+        engine._body_clouds = {
+            1: {
+                0: SurfaceLinkCloud(
+                    body_id=1,
+                    link_index=0,
+                    link_name="robot_link",
+                    local_points=np.zeros((1, 3), dtype=float),
+                    local_normals=np.zeros((1, 3), dtype=float),
+                    role="robot",
+                )
+            },
+            7: {
+                0: SurfaceLinkCloud(
+                    body_id=7,
+                    link_index=0,
+                    link_name="obstacle_link",
+                    local_points=np.zeros((1, 3), dtype=float),
+                    local_normals=np.zeros((1, 3), dtype=float),
+                    role="obstacle",
+                )
+            },
+        }
+        engine._body_roles = {1: "robot", 7: "obstacle"}
+        robot_mesh = trimesh.creation.box(extents=[1.0, 1.0, 1.0])
+        engine._get_world_cloud = lambda body_id, link_index: {
+            "body_id": int(body_id),
+            "link_index": int(link_index),
+            "link_name": "robot_link" if int(body_id) == 1 else "obstacle_link",
+            "points": np.array([[0.5, 0.0, 0.0]], dtype=float) if int(body_id) == 1 else np.array([[5.0, 0.0, 0.0]], dtype=float),
+            "normals": np.array([[1.0, 0.0, 0.0]], dtype=float),
+            "local_mesh": robot_mesh if int(body_id) == 1 else None,
+            "world_pos": np.zeros(3, dtype=float),
+            "world_quat": np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+            "device_points": None,
+            "device_normals": None,
+        }
+        engine._get_local_dense_world_cloud = lambda *args, **kwargs: {
+            "body_id": 7,
+            "link_index": 0,
+            "link_name": "obstacle_link",
+            "points": np.array([[0.6, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=float),
+            "normals": np.array([[-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]], dtype=float),
+            "local_mesh": None,
+            "world_pos": np.zeros(3, dtype=float),
+            "world_quat": np.array([0.0, 0.0, 0.0, 1.0], dtype=float),
+            "device_points": None,
+            "device_normals": None,
+        }
+
+        result = engine.query_link_to_body(
+            robot_body_id=1,
+            robot_link_index=0,
+            obstacle_body_id=7,
+            query_center_world=np.zeros(3, dtype=float),
+        )
+
+        self.assertIsNotNone(result)
+        self.assertLess(result["signed_dist"], 0.0)
+        self.assertTrue(np.allclose(result["point_on_obstacle"], [0.0, 0.0, 0.0]))
+
 
 if __name__ == "__main__":
     unittest.main()

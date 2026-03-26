@@ -130,6 +130,43 @@ def apply_contains_sign_to_distance(
     return -magnitude if inside else magnitude
 
 
+def apply_contains_sign_to_candidate_points(
+    mesh,
+    point_on_link_world: np.ndarray,
+    obstacle_points_world: np.ndarray,
+    world_pos: np.ndarray,
+    world_quat: np.ndarray,
+    fallback_signed_dist: float,
+    candidate_limit: int = 32,
+) -> tuple[float, int | None]:
+    if mesh is None:
+        return float(fallback_signed_dist), None
+    points_world = np.asarray(obstacle_points_world, dtype=float).reshape(-1, 3)
+    if points_world.shape[0] == 0:
+        return float(fallback_signed_dist), None
+    limit = min(max(int(candidate_limit), 1), points_world.shape[0])
+    deltas = points_world - np.asarray(point_on_link_world, dtype=float).reshape(1, 3)
+    dist_sq = np.einsum("ij,ij->i", deltas, deltas)
+    if limit >= points_world.shape[0]:
+        candidate_indices = np.arange(points_world.shape[0], dtype=int)
+    else:
+        candidate_indices = np.argpartition(dist_sq, limit - 1)[:limit]
+    candidate_points_local = SurfaceDistanceEngine.transform_world_points_to_local(
+        points_world[candidate_indices],
+        world_pos=np.asarray(world_pos, dtype=float),
+        world_quat=np.asarray(world_quat, dtype=float),
+    )
+    try:
+        inside_mask = np.asarray(mesh.contains(candidate_points_local), dtype=bool).reshape(-1)
+    except Exception:
+        return float(fallback_signed_dist), None
+    if not np.any(inside_mask):
+        return abs(float(fallback_signed_dist)), None
+    inside_indices = candidate_indices[np.flatnonzero(inside_mask)]
+    inside_best = inside_indices[int(np.argmin(dist_sq[inside_indices]))]
+    return -float(np.sqrt(max(dist_sq[inside_best], 0.0))), int(inside_best)
+
+
 def compute_world_surface(
     local_points: np.ndarray,
     local_normals: np.ndarray,
@@ -677,6 +714,16 @@ class SurfaceDistanceEngine:
         point_local, _ = p.multiplyTransforms(inv_pos, inv_quat, np.asarray(point_world, dtype=float).tolist(), [0, 0, 0, 1])
         return np.asarray(point_local, dtype=float)
 
+    @staticmethod
+    def transform_world_points_to_local(points_world: np.ndarray, world_pos: np.ndarray, world_quat: np.ndarray) -> np.ndarray:
+        inv_pos, inv_quat = p.invertTransform(
+            np.asarray(world_pos, dtype=float).tolist(),
+            np.asarray(world_quat, dtype=float).tolist(),
+        )
+        rot = np.array(p.getMatrixFromQuaternion(inv_quat), dtype=float).reshape(3, 3)
+        pts = np.asarray(points_world, dtype=float).reshape(-1, 3)
+        return (rot @ pts.T).T + np.asarray(inv_pos, dtype=float).reshape(1, 3)
+
     def query_link_to_body(
         self,
         robot_body_id: int,
@@ -722,17 +769,34 @@ class SurfaceDistanceEngine:
                     obs_cloud["points"],
                     obs_cloud["normals"],
                 )
-            point_on_obstacle_local = self._transform_world_point_to_local(
-                pair["point_on_obstacle"],
-                robot_cloud["world_pos"],
-                robot_cloud["world_quat"],
-            )
-            pair["signed_dist"] = apply_contains_sign_to_distance(
+            signed_dist, inside_idx = apply_contains_sign_to_candidate_points(
                 mesh=robot_cloud.get("local_mesh"),
-                point_local=point_on_obstacle_local,
-                unsigned_dist=pair["euclidean_dist"],
-                fallback_signed_dist=pair["signed_dist"],
+                point_on_link_world=pair["point_on_link"],
+                obstacle_points_world=obs_cloud["points"],
+                world_pos=robot_cloud["world_pos"],
+                world_quat=robot_cloud["world_quat"],
+                fallback_signed_dist=pair["euclidean_dist"],
+                candidate_limit=int(getattr(self.config, "surface_contains_candidate_limit", 32)),
             )
+            if inside_idx is not None:
+                pair["point_on_obstacle"] = np.asarray(obs_cloud["points"][inside_idx], dtype=float)
+                pair["normal_on_obstacle"] = _normalize_rows(np.asarray(obs_cloud["normals"][inside_idx], dtype=float))
+                separation = np.asarray(pair["point_on_link"], dtype=float) - np.asarray(pair["point_on_obstacle"], dtype=float)
+                pair["euclidean_dist"] = float(np.linalg.norm(separation))
+                pair["signed_dist"] = -abs(float(pair["euclidean_dist"]))
+                pair["obstacle_point_index"] = int(inside_idx)
+            else:
+                point_on_obstacle_local = self._transform_world_point_to_local(
+                    pair["point_on_obstacle"],
+                    robot_cloud["world_pos"],
+                    robot_cloud["world_quat"],
+                )
+                pair["signed_dist"] = apply_contains_sign_to_distance(
+                    mesh=robot_cloud.get("local_mesh"),
+                    point_local=point_on_obstacle_local,
+                    unsigned_dist=pair["euclidean_dist"],
+                    fallback_signed_dist=signed_dist,
+                )
             pair.update({
                 "robot_link_index": int(robot_link_index),
                 "robot_link_name": str(robot_cloud["link_name"]),

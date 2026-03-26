@@ -576,6 +576,27 @@ class MPCDCBFController:
                     best_normal = np.array(normal, dtype=float)
         return best_signed_dist, best_normal
 
+    def _compute_active_orientation_weight(self, current_progress: float) -> tuple[float, float]:
+        cfg = self.config
+        segment_index = None
+        if self.trajectory is not None and hasattr(self.trajectory, "current_segment_index"):
+            try:
+                segment_index = int(self.trajectory.current_segment_index(float(current_progress)))
+            except Exception:
+                segment_index = None
+        if segment_index == 1:
+            return float(cfg.mpc_orientation_tracking_weight), 1.0
+
+        remaining_progress = max(self.trajectory.progress_end - float(current_progress), 0.0)
+        orientation_phase_ratio = float(
+            np.clip(
+                1.0 - remaining_progress / max(cfg.mpc_terminal_orientation_window, 1e-6),
+                0.0,
+                1.0,
+            )
+        )
+        return float(cfg.mpc_orientation_tracking_weight * orientation_phase_ratio), orientation_phase_ratio
+
     def solve(
         self,
         q,
@@ -650,14 +671,7 @@ class MPCDCBFController:
         ref_positions = mixed_refs[1:]
 
         remaining_progress = max(self.trajectory.progress_end - float(current_progress), 0.0)
-        orientation_phase_ratio = float(
-            np.clip(
-                1.0 - remaining_progress / max(cfg.mpc_terminal_orientation_window, 1e-6),
-                0.0,
-                1.0,
-            )
-        )
-        active_orientation_weight = cfg.mpc_orientation_tracking_weight * orientation_phase_ratio
+        active_orientation_weight, orientation_phase_ratio = self._compute_active_orientation_weight(current_progress)
 
         # region agent log
         _append_debug_log(
