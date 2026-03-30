@@ -117,8 +117,6 @@ def parse_urdf_links(
 
 @dataclass
 class SDFDataset:
-    points: np.ndarray | None   # (N, 3) float32 — 归一化坐标 (有监督时使用)
-    sdf_values: np.ndarray | None  # (N,) float32 (有监督时使用)
     surface_points: np.ndarray  # (M, 3) float32
     surface_normals: np.ndarray # (M, 3) float32
     aabb_min: np.ndarray        # (3,) 归一化空间的采样下界
@@ -137,111 +135,10 @@ def _try_repair_mesh(mesh):
     return mesh
 
 
-def _compute_sdf_values(mesh, points: np.ndarray) -> np.ndarray:
-    """计算查询点到 mesh 的有符号距离。
-
-    优先使用 ``mesh_to_sdf`` 包（更健壮地处理非封闭几何），
-    回退到 ``trimesh.proximity`` + ``mesh.contains``。
-    """
-    import trimesh as _trimesh
-
-    try:
-        from mesh_to_sdf import mesh_to_sdf
-        return mesh_to_sdf(mesh, points, sign_method="depth").astype(np.float32)
-    except Exception:
-        pass
-
-    _, distances, _ = _trimesh.proximity.closest_point(mesh, points)
-    try:
-        inside = mesh.contains(points)
-    except Exception:
-        inside = np.zeros(len(points), dtype=bool)
-    sdf = distances.astype(np.float32)
-    sdf[inside] *= -1.0
-    return sdf
-
-
-def generate_sdf_data(
-    mesh_path: Path,
-    n_near_surface: int = 250_000,
-    n_uniform: int = 50_000,
-    near_surface_std: float = 0.015,
-    aabb_expand: float = 0.3,
-) -> tuple[SDFDataset, dict]:
-    """为单个连杆 mesh 生成 SDF 训练数据。
-
-    返回:
-        dataset: SDFDataset
-        meta: 统计元信息 dict
-    """
-    import trimesh
-
-    mesh: trimesh.Trimesh = trimesh.load(str(mesh_path), force="mesh")
-    if hasattr(mesh, "fix_normals"):
-        mesh.fix_normals()
-    mesh = _try_repair_mesh(mesh)
-
-    n_verts = int(mesh.vertices.shape[0])
-    n_faces = int(mesh.faces.shape[0])
-
-    # --- 归一化到单位球附近 ---
-    center = mesh.bounding_box.centroid.copy()
-    extent = np.max(mesh.bounding_box.extents) / 2.0
-    scale = float(extent) if extent > 1e-8 else 1.0
-
-    mesh_n = mesh.copy()
-    mesh_n.apply_translation(-center)
-    mesh_n.apply_scale(1.0 / scale)
-
-    # --- 1. 表面采样 ---
-    surface_pts, face_ids = trimesh.sample.sample_surface(mesh_n, n_near_surface)
-    surface_pts = surface_pts.astype(np.float32)
-    surface_normals = mesh_n.face_normals[face_ids].astype(np.float32)
-
-    # --- 2. 近表面扰动（多尺度: 50%极近 / 25%标准 / 25%稍远） ---
-    scales = np.ones((n_near_surface, 1), dtype=np.float32) * near_surface_std
-    n_fine = n_near_surface // 2
-    n_mid = n_near_surface // 4
-    scales[:n_fine] *= 0.2
-    scales[n_fine:n_fine + n_mid] *= 1.0
-    scales[n_fine + n_mid:] *= 3.0
-    noise = np.random.randn(n_near_surface, 1).astype(np.float32) * scales
-    near_pts = surface_pts + noise * surface_normals
-
-    # --- 3. 均匀采样 ---
-    aabb_lo = mesh_n.bounds[0] - aabb_expand
-    aabb_hi = mesh_n.bounds[1] + aabb_expand
-    uniform_pts = np.random.uniform(aabb_lo, aabb_hi, (n_uniform, 3)).astype(np.float32)
-
-    # --- 4. 计算 SDF 标签 ---
-    all_pts = np.vstack([near_pts, uniform_pts])
-    print(f"    计算 {all_pts.shape[0]} 个点的 SDF 值 ...")
-    sdf_vals = _compute_sdf_values(mesh_n, all_pts)
-
-    # 可视化用表面点（取子集）
-    viz_n = min(5000, n_near_surface)
-
-    dataset = SDFDataset(
-        points=all_pts,
-        sdf_values=sdf_vals,
-        surface_points=surface_pts[:viz_n].copy(),
-        surface_normals=surface_normals[:viz_n].copy(),
-        aabb_min=aabb_lo.astype(np.float32),
-        aabb_max=aabb_hi.astype(np.float32),
-        center=center.astype(np.float32),
-        scale=scale,
-    )
-    meta = dict(
-        n_vertices=n_verts, n_faces=n_faces,
-        n_train_points=int(all_pts.shape[0]),
-        is_watertight=bool(mesh_n.is_watertight),
-    )
-    return dataset, meta
-
-
 def generate_pointcloud_data(
     mesh_path: Path,
     n_surface: int = 30_000,
+    grid_range: float = 1.1,
 ) -> tuple[SDFDataset, dict]:
     """为无监督训练生成点云数据 (只采样表面点+法向，不计算 SDF 标签)。
 
@@ -274,16 +171,14 @@ def generate_pointcloud_data(
     norms = np.clip(norms, 1e-8, None)
     surface_normals = surface_normals / norms
 
-    aabb_lo = mesh_n.bounds[0] - 0.1
-    aabb_hi = mesh_n.bounds[1] + 0.1
+    aabb_lo = np.full(3, -grid_range, dtype=np.float32)
+    aabb_hi = np.full(3, grid_range, dtype=np.float32)
 
     dataset = SDFDataset(
-        points=None,
-        sdf_values=None,
         surface_points=surface_pts,
         surface_normals=surface_normals,
-        aabb_min=aabb_lo.astype(np.float32),
-        aabb_max=aabb_hi.astype(np.float32),
+        aabb_min=aabb_lo,
+        aabb_max=aabb_hi,
         center=center.astype(np.float32),
         scale=scale,
     )
@@ -400,19 +295,18 @@ class NeuralSDF3D(nn.Module):
             self.encoding = None
             in_dim = 3
 
-        self._n_layers = n_layers
+        dims = [in_dim] + [hidden for _ in range(n_layers)] + [1]
         layers: list[nn.Module] = []
-        for i in range(n_layers):
-            d_in = in_dim if i == 0 else hidden
+        for i, (d_in, d_out) in enumerate(zip(dims[:-1], dims[1:])):
             if quadratic:
-                layers.append(QuadraticLayer(d_in, hidden))
+                layers.append(QuadraticLayer(d_in, d_out))
             else:
-                layers.append(nn.Linear(d_in, hidden))
-            if activation == "sin":
-                layers.append(SinActivation(omega_0))
-            else:
-                layers.append(nn.Softplus(beta=100))
-        layers.append(nn.Linear(hidden, 1))
+                layers.append(nn.Linear(d_in, d_out))
+            if i != len(dims) - 2:
+                if activation == "sin":
+                    layers.append(SinActivation(omega_0))
+                else:
+                    layers.append(nn.Softplus(beta=100))
         self.net = nn.Sequential(*layers)
 
         self._init_weights()
@@ -650,173 +544,6 @@ class TrainResult:
     elapsed_seconds: float = 0.0
 
 
-def train_link_sdf(
-    dataset: SDFDataset,
-    *,
-    epochs: int = 5000,
-    batch_size: int = 8192,
-    lr: float = 1e-4,
-    device: str = "cpu",
-    w_sdf: float = 1.0,
-    w_eikonal: float = 0.1,
-    w_dd: float = 0.01,
-    w_normal: float = 0.1,
-    eikonal_p: int = 1,
-    hidden: int = 256,
-    n_layers: int = 8,
-    n_frequencies: int = 6,
-    use_fourier: bool = False,
-    quadratic: bool = True,
-    activation: str = "softplus",
-    omega_0: float = 30.0,
-    init_type: str = "mfgi",
-    grad_clip: float = 10.0,
-) -> TrainResult:
-    """训练单个连杆的 Neural SDF 网络。
-
-    对齐 StEik 源码的关键改进:
-        - MFGI 初始化 (多频率几何初始化)
-        - QuadraticLayer init_lin2_lin3 (lin2≈identity, lin3≈0)
-        - Softplus(beta=100) 与 StEik 一致
-        - 方向散度归一化: div / (||∇u||² + ε)
-        - 退火调度 50%→75% (StEik 默认)
-        - 梯度裁剪 clip_grad_norm
-        - 法向一致性损失
-    """
-
-    model = NeuralSDF3D(
-        hidden, n_layers, n_frequencies, use_fourier,
-        quadratic=quadratic, activation=activation, omega_0=omega_0,
-        init_type=init_type,
-    ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-
-    pts_all = torch.tensor(dataset.points, dtype=torch.float32, device=device)
-    sdf_all = torch.tensor(dataset.sdf_values, dtype=torch.float32, device=device)
-    n_total = pts_all.shape[0]
-
-    surf_pts_all = torch.tensor(dataset.surface_points, dtype=torch.float32, device=device)
-    surf_normals_all = torch.tensor(dataset.surface_normals, dtype=torch.float32, device=device)
-    n_surf = surf_pts_all.shape[0]
-
-    aabb_lo = torch.tensor(dataset.aabb_min, dtype=torch.float32, device=device)
-    aabb_hi = torch.tensor(dataset.aabb_max, dtype=torch.float32, device=device)
-    aabb_range = aabb_hi - aabb_lo
-
-    # StEik 退火: LL.n. 权重在 50%→75% 训练区间线性衰减到 0 (对齐源码默认)
-    anneal_start = int(0.5 * epochs)
-    anneal_end = int(0.75 * epochs)
-
-    log_interval = max(1, epochs // 20)
-    loss_history: list[dict] = []
-    t0 = time.time()
-
-    for epoch in range(epochs):
-        model.train()
-        idx = torch.randint(0, n_total, (batch_size,), device=device)
-        pts_b = pts_all[idx]
-        sdf_b = sdf_all[idx]
-
-        optimizer.zero_grad()
-
-        # ----- SDF 回归损失 -----
-        pred = model(pts_b)
-        loss_sdf = torch.mean((pred - sdf_b) ** 2)
-
-        # ----- Eikonal 损失 (在随机采样点 + 表面点上同时计算) -----
-        n_eik = batch_size // 2
-        eik_pts = (torch.rand(n_eik, 3, device=device) * aabb_range + aabb_lo).detach()
-        eik_pts.requires_grad_(True)
-        pred_eik = model(eik_pts)
-        eik_grad = torch.autograd.grad(
-            pred_eik, eik_pts,
-            grad_outputs=torch.ones_like(pred_eik),
-            create_graph=True,
-        )[0]
-        eik_grad_norm = torch.linalg.norm(eik_grad, dim=1)
-
-        # 表面点上也计算 eikonal + 法向一致性
-        n_surf_batch = min(batch_size // 4, n_surf)
-        surf_idx = torch.randint(0, n_surf, (n_surf_batch,), device=device)
-        surf_pts_b = surf_pts_all[surf_idx].detach().clone()
-        surf_pts_b.requires_grad_(True)
-        surf_normals_b = surf_normals_all[surf_idx]
-        pred_surf = model(surf_pts_b)
-        surf_grad = torch.autograd.grad(
-            pred_surf, surf_pts_b,
-            grad_outputs=torch.ones_like(pred_surf),
-            create_graph=True,
-        )[0]
-        surf_grad_norm = torch.linalg.norm(surf_grad, dim=1)
-
-        all_grad_norm = torch.cat([eik_grad_norm, surf_grad_norm], dim=0)
-        if eikonal_p == 1:
-            loss_eikonal = torch.mean(torch.abs(all_grad_norm - 1.0))
-        else:
-            loss_eikonal = torch.mean((all_grad_norm - 1.0) ** 2)
-
-        total = w_sdf * loss_sdf + w_eikonal * loss_eikonal
-
-        # ----- 法向一致性损失 (StEik normal_term) -----
-        loss_normal_val = torch.tensor(0.0, device=device)
-        if w_normal > 0:
-            cos_sim = torch.nn.functional.cosine_similarity(
-                surf_grad, surf_normals_b, dim=-1,
-            )
-            loss_normal_val = (1.0 - torch.abs(cos_sim)).mean()
-            total = total + w_normal * loss_normal_val
-
-        # ----- 方向散度正则 LL.n. (StEik 源码对齐) -----
-        loss_dd_val = torch.tensor(0.0, device=device)
-        if w_dd > 0:
-            if epoch < anneal_start:
-                w_dd_cur = w_dd
-            elif epoch < anneal_end:
-                frac = (epoch - anneal_start) / max(anneal_end - anneal_start, 1)
-                w_dd_cur = w_dd * (1.0 - frac)
-            else:
-                w_dd_cur = 0.0
-
-            if w_dd_cur > 0:
-                # StEik directional_div: (∇u·hvp) / (||∇u||²+ε)
-                # hvp = 0.5 * ∇x(||∇u||²)
-                dot_grad = (eik_grad * eik_grad).sum(dim=-1, keepdim=True)
-                hvp = 0.5 * torch.autograd.grad(
-                    dot_grad, eik_pts,
-                    grad_outputs=torch.ones_like(dot_grad),
-                    retain_graph=True, create_graph=True,
-                )[0]
-                div = (eik_grad * hvp).sum(dim=-1) / (
-                    (eik_grad ** 2).sum(dim=-1) + 1e-5
-                )
-                loss_dd_val = torch.mean(torch.abs(div))
-                total = total + w_dd_cur * loss_dd_val
-
-        total.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-        optimizer.step()
-        scheduler.step()
-
-        if epoch % log_interval == 0 or epoch == epochs - 1:
-            loss_history.append(dict(
-                epoch=epoch,
-                loss_total=total.item(),
-                loss_sdf=loss_sdf.item(),
-                loss_eikonal=loss_eikonal.item(),
-                loss_dd=loss_dd_val.item(),
-                loss_normal=loss_normal_val.item(),
-            ))
-
-    elapsed = time.time() - t0
-    return TrainResult(
-        model=model,
-        loss_history=loss_history,
-        final_loss=loss_history[-1]["loss_total"] if loss_history else float("inf"),
-        elapsed_seconds=elapsed,
-    )
-
-
 def train_link_sdf_unsupervised(
     dataset: SDFDataset,
     *,
@@ -831,6 +558,7 @@ def train_link_sdf_unsupervised(
     eikonal_type: str = "abs",
     hidden: int = 256,
     n_layers: int = 8,
+    n_frequencies: int = 6,
     use_fourier: bool = False,
     quadratic: bool = True,
     activation: str = "softplus",
@@ -850,7 +578,7 @@ def train_link_sdf_unsupervised(
     w_sdf, w_inter, w_normal, w_eikonal, w_div = loss_weights
 
     model = NeuralSDF3D(
-        hidden, n_layers, 6, use_fourier,
+        hidden, n_layers, n_frequencies, use_fourier,
         quadratic=quadratic, activation=activation, omega_0=omega_0,
         init_type=init_type,
     ).to(device)
@@ -1251,19 +979,21 @@ def _save_isosurface(
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="逐连杆 3D Neural SDF 训练 (对齐 StEik 源码)",
+        description="逐连杆 3D Neural SDF 无监督训练 (对齐 StEik 源码)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--urdf", default="assets/robots/9_axis/urdf/9_axis.urdf",
                     help="URDF 文件路径")
     p.add_argument("--link-names", nargs="+", default=None,
                     help="要训练的连杆名列表；不指定则使用默认后六轴集合")
-    p.add_argument("--epochs",       type=int,   default=5000)
-    p.add_argument("--batch-size",   type=int,   default=8192)
-    p.add_argument("--n-surface",    type=int,   default=250_000,
-                    help="近表面采样点数")
-    p.add_argument("--n-uniform",    type=int,   default=50_000,
-                    help="均匀空间采样点数")
+    p.add_argument("--n-iterations", type=int,   default=5000,
+                    help="无监督训练迭代数")
+    p.add_argument("--n-points",     type=int,   default=30000,
+                    help="每次迭代采样的 manifold / non-manifold 点数")
+    p.add_argument("--n-surface",    type=int,   default=30000,
+                    help="从 mesh 表面预采样的点云规模")
+    p.add_argument("--grid-range",   type=float, default=1.1,
+                    help="non-manifold 均匀采样范围 [-r, r]")
     p.add_argument("--device",       default="auto",
                     help="训练设备 (auto / cpu / cuda)")
     p.add_argument("--output-dir",   default="artifacts/neural_sdf/9_axis_links")
@@ -1292,12 +1022,22 @@ def build_parser() -> argparse.ArgumentParser:
                     choices=["mfgi", "siren", "xavier"],
                     help="权重初始化方式 (StEik 默认 mfgi)")
     # ---- 损失函数 ----
-    p.add_argument("--w-dd", type=float, default=0.01,
-                    help="方向散度正则 (LL.n.) 权重; 0 禁用")
-    p.add_argument("--w-normal", type=float, default=0.1,
-                    help="法向一致性损失权重; 0 禁用")
-    p.add_argument("--eikonal-p", type=int, default=1, choices=[1, 2],
-                    help="Eikonal 损失范数 (1=L1, 2=L2)")
+    p.add_argument("--loss-weights", nargs=5, type=float,
+                    default=[3e3, 1e2, 1e2, 5e1, 1e1],
+                    metavar=("W_SDF", "W_INTER", "W_NORMAL", "W_EIK", "W_DIV"),
+                    help="StEik 五项损失权重: sdf inter normal eikonal div")
+    p.add_argument("--div-decay", default="linear",
+                    choices=["none", "step", "linear", "quintic"],
+                    help="方向散度权重退火策略")
+    p.add_argument("--div-decay-params", nargs="+", type=float,
+                    default=[0.0, 0.5, 0.75],
+                    help="方向散度退火参数，和 StEik 源码一致")
+    p.add_argument("--div-type", default="dir_l1",
+                    choices=["dir_l1", "dir_l2"],
+                    help="方向散度项形式")
+    p.add_argument("--eikonal-type", default="abs",
+                    choices=["abs", "square"],
+                    help="Eikonal 项形式")
     p.add_argument("--grad-clip", type=float, default=10.0,
                     help="梯度裁剪阈值 (StEik 默认 10.0)")
     return p
@@ -1333,10 +1073,8 @@ def main(argv: Sequence[str] | None = None):
     activation = args.activation
     omega_0 = args.omega_0
     init_type = args.init_type
-    w_dd = args.w_dd
-    w_normal = args.w_normal
-    eikonal_p = args.eikonal_p
     grad_clip = args.grad_clip
+    w_sdf, w_inter, w_normal, w_eikonal, w_div = args.loss_weights
 
     if activation == "sin" and use_fourier:
         print("  [警告] sin 激活 + Fourier 编码可能导致频率过高，建议去掉 --fourier")
@@ -1349,18 +1087,21 @@ def main(argv: Sequence[str] | None = None):
     flags.append(f"init={init_type}")
     if use_fourier:
         flags.append("fourier")
-    flags.append(f"{'L1' if eikonal_p == 1 else 'L2'}-eik")
+    flags.append(f"eik={args.eikonal_type}")
     if activation == "sin":
         flags.append(f"sin(ω₀={omega_0})")
     else:
         flags.append("softplus(β=100)")
-    if w_dd > 0:
-        flags.append(f"LL.n.={w_dd}")
+    if w_div > 0:
+        flags.append(f"LL.n.={w_div}")
     if w_normal > 0:
         flags.append(f"normal={w_normal}")
     flags.append(f"clip={grad_clip}")
     print(f"  网络配置: {', '.join(flags)}")
-    print(f"  容量: {args.hidden}×{args.n_layers}, lr={args.lr}, epochs={args.epochs}")
+    print(
+        f"  容量: {args.hidden}×{args.n_layers}, lr={args.lr}, "
+        f"iterations={args.n_iterations}, n_points={args.n_points}"
+    )
 
     summary_rows: list[dict] = []
 
@@ -1375,25 +1116,30 @@ def main(argv: Sequence[str] | None = None):
 
         # ---- 数据生成 ----
         print(f"  加载 mesh: {li.mesh_path.name}")
-        dataset, meta = generate_sdf_data(
+        dataset, meta = generate_pointcloud_data(
             li.mesh_path,
-            n_near_surface=args.n_surface,
-            n_uniform=args.n_uniform,
+            n_surface=args.n_surface,
+            grid_range=args.grid_range,
         )
         print(
-            f"  数据集: {dataset.points.shape[0]} 点, "
+            f"  数据集: {dataset.surface_points.shape[0]} 个表面点, "
             f"scale={dataset.scale:.6f}, "
             f"watertight={meta['is_watertight']}"
         )
 
         # ---- 训练 ----
-        print(f"  训练中 ({args.epochs} epochs, batch={args.batch_size}) ...")
-        result = train_link_sdf(
+        print(f"  训练中 ({args.n_iterations} iterations, n_points={args.n_points}) ...")
+        result = train_link_sdf_unsupervised(
             dataset,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
+            n_iterations=args.n_iterations,
+            n_points=args.n_points,
             lr=args.lr,
             device=device,
+            loss_weights=tuple(args.loss_weights),
+            div_decay=args.div_decay,
+            div_decay_params=tuple(args.div_decay_params),
+            div_type=args.div_type,
+            eikonal_type=args.eikonal_type,
             hidden=args.hidden,
             n_layers=args.n_layers,
             n_frequencies=args.n_frequencies,
@@ -1402,25 +1148,22 @@ def main(argv: Sequence[str] | None = None):
             activation=activation,
             omega_0=omega_0,
             init_type=init_type,
-            w_dd=w_dd,
-            w_normal=w_normal,
-            eikonal_p=eikonal_p,
             grad_clip=grad_clip,
+            grid_range=args.grid_range,
         )
 
         # 打印训练进度摘要
         print_interval = max(1, len(result.loss_history) // 5)
         for i, entry in enumerate(result.loss_history):
             if i % print_interval == 0 or i == len(result.loss_history) - 1:
-                extra = ""
-                if entry.get("loss_normal", 0) > 0:
-                    extra = f"  nrm={entry['loss_normal']:.6f}"
                 print(
-                    f"    [Epoch {entry['epoch']:5d}]  "
+                    f"    [Iter {entry['epoch']:5d}]  "
                     f"total={entry['loss_total']:.6f}  "
                     f"sdf={entry['loss_sdf']:.6f}  "
-                    f"eik={entry['loss_eikonal']:.6f}"
-                    f"{extra}"
+                    f"inter={entry['loss_inter']:.6f}  "
+                    f"eik={entry['loss_eikonal']:.6f}  "
+                    f"nrm={entry['loss_normal']:.6f}  "
+                    f"div={entry['loss_dd']:.6f}"
                 )
         print(
             f"  完成: {result.elapsed_seconds:.1f}s, "
@@ -1448,9 +1191,11 @@ def main(argv: Sequence[str] | None = None):
         stats = dict(
             link_name=li.link_name,
             mesh_path=str(li.mesh_path),
-            n_near_surface=args.n_surface,
-            n_uniform=args.n_uniform,
-            epochs=args.epochs,
+            n_surface=args.n_surface,
+            n_iterations=args.n_iterations,
+            n_points=args.n_points,
+            grid_range=args.grid_range,
+            loss_weights=args.loss_weights,
             final_loss=result.final_loss,
             training_seconds=result.elapsed_seconds,
             center=dataset.center.tolist(),
