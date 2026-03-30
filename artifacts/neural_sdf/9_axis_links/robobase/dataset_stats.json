@@ -1,11 +1,41 @@
 {
   "link_name": "robobase",
-  "mesh_path": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\assets\\robots\\9_axis\\meshes\\robobase.STL",
-  "n_near_surface": 250000,
-  "n_uniform": 50000,
-  "epochs": 3000,
-  "final_loss": 0.005250862799584866,
-  "training_seconds": 99.89307975769043,
+  "mesh_path": "/root/autodl-tmp/DifferentiableOptimizationCBF-main/assets/robots/9_axis/meshes/robobase.STL",
+  "n_surface": 30000,
+  "n_iterations": 10000,
+  "iterations_run": 10000,
+  "n_points": 15000,
+  "grid_range": 1.0,
+  "use_amp": false,
+  "amp_dtype": "float16",
+  "use_tf32": true,
+  "optimizer": "adam",
+  "weight_decay": 0.0,
+  "sphere_init_params": [
+    1.6,
+    0.1
+  ],
+  "lr_schedule": "none",
+  "lr_min_ratio": 0.3,
+  "plateau_factor": 0.5,
+  "plateau_patience": 300,
+  "plateau_threshold": 0.0001,
+  "early_stop_patience": 0,
+  "early_stop_min_delta": 0.0,
+  "early_stop_warmup": 1000,
+  "restore_best": true,
+  "stop_reason": "max_iterations",
+  "best_loss": 8.563848495483398,
+  "loss_weights": [
+    2000.0,
+    100.0,
+    100.0,
+    50.0,
+    100.0
+  ],
+  "loss_type": "siren_w_div",
+  "final_loss": 11.536898612976074,
+  "training_seconds": 432.4472348690033,
   "center": [
     0.023783020675182343,
     -0.00029472634196281433,
@@ -13,17 +43,17 @@
   ],
   "scale": 0.10578302294015884,
   "aabb_min": [
-    -1.2999999523162842,
-    -1.0461559295654297,
-    -0.4890662431716919
+    -1.0,
+    -1.0,
+    -1.0
   ],
   "aabb_max": [
-    1.2999999523162842,
-    1.0461559295654297,
-    0.4890662431716919
+    1.0,
+    1.0,
+    1.0
   ],
   "n_vertices": 7827,
   "n_faces": 15400,
-  "n_train_points": 300000,
+  "n_train_points": 30000,
   "is_watertight": false
 }
