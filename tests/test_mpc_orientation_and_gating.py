@@ -73,6 +73,56 @@ class MPCOrientationTests(unittest.TestCase):
         self.assertAlmostEqual(active_weight, 4.0, places=6)
         self.assertAlmostEqual(phase_ratio, 1.0, places=6)
 
+    def test_build_qp_adds_second_order_risk_penalty_for_high_risk_direction(self):
+        module = load_module()
+        cfg = module.ExperimentConfig()
+        cfg.N_mpc = 2
+        cfg.mpc_tracking_weight = 0.0
+        cfg.mpc_orientation_tracking_weight = 0.0
+        cfg.mpc_control_weight = 0.0
+        cfg.mpc_smooth_weight = 0.0
+        controller = module.MPCDCBFController(DummyRobot(), cfg, trajectory=None)
+
+        ee_pos = np.zeros(3)
+        j_pos = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=float)
+        j_rot = np.zeros((3, 2), dtype=float)
+        ref_positions = [np.zeros(3) for _ in range(cfg.N_mpc)]
+        ref_rotvecs = [np.zeros(3) for _ in range(cfg.N_mpc)]
+
+        h_base, f_base, _, _ = controller._build_qp(
+            ee_pos,
+            j_pos,
+            j_rot,
+            ref_positions,
+            ref_rotvecs,
+            [],
+            [],
+            0.0,
+        )
+        h_risk, f_risk, _, _ = controller._build_qp(
+            ee_pos,
+            j_pos,
+            j_rot,
+            ref_positions,
+            ref_rotvecs,
+            [],
+            [],
+            0.0,
+            second_order_risk_terms=[
+                {
+                    "horizon_step": 0,
+                    "joint_direction": np.array([1.0, 0.0], dtype=float),
+                    "risk_weight": 2.5,
+                    "shrink_weight": 1.0,
+                    "shortfall": 0.03,
+                    "negative_curvature": 0.4,
+                }
+            ],
+        )
+
+        self.assertGreater(h_risk[0, 0], h_base[0, 0])
+        self.assertGreater(np.linalg.norm(f_risk), np.linalg.norm(f_base))
+
 
 class SimplifiedModuleSurfaceTests(unittest.TestCase):
     def test_module_keeps_only_current_mainline_symbols(self):

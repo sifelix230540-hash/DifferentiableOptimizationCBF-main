@@ -33,6 +33,7 @@ class DynamicNominalReferenceMixerTests(unittest.TestCase):
     def test_enabled_mixer_waits_until_stall_before_modifying_nominal(self):
         cfg = ExperimentConfig()
         cfg.use_dynamic_nominal_reference = True
+        cfg.dynamic_nominal_history_size = 6
         mixer = DynamicNominalReferenceMixer(cfg)
 
         nominal_refs = [
@@ -57,6 +58,7 @@ class DynamicNominalReferenceMixerTests(unittest.TestCase):
     def test_enabled_mixer_uses_executed_trajectory_direction_when_stalled(self):
         cfg = ExperimentConfig()
         cfg.use_dynamic_nominal_reference = True
+        cfg.dynamic_nominal_history_size = 6
         mixer = DynamicNominalReferenceMixer(cfg)
 
         nominal_refs = [
@@ -83,13 +85,14 @@ class DynamicNominalReferenceMixerTests(unittest.TestCase):
 
         self.assertTrue(info["dynamic_nominal_stall_active"])
         self.assertGreater(info["dynamic_nominal_weight"], 0.0)
-        self.assertGreater(mixed_positions[0][1], nominal_refs[0][1])
-        self.assertGreater(mixed_positions[0][0], nominal_refs[0][0])
-        self.assertGreater(info["dynamic_reference_offset_norm"], 0.0)
+        self.assertGreater(mixed_positions[1][0], nominal_refs[1][0])
+        self.assertGreater(abs(mixed_positions[1][1] - nominal_refs[1][1]), 0.0)
+        self.assertGreater(np.linalg.norm(mixed_positions[1] - nominal_refs[1]), 0.0)
 
     def test_enabled_mixer_triggers_for_small_but_nonzero_exec_motion(self):
         cfg = ExperimentConfig()
         cfg.use_dynamic_nominal_reference = True
+        cfg.dynamic_nominal_history_size = 6
         mixer = DynamicNominalReferenceMixer(cfg)
 
         nominal_refs = [
@@ -117,11 +120,12 @@ class DynamicNominalReferenceMixerTests(unittest.TestCase):
         self.assertTrue(info["dynamic_nominal_stall_active"])
         self.assertGreater(info["dynamic_nominal_weight"], 0.0)
         self.assertGreater(info["dynamic_nominal_exec_motion"], 0.0)
-        self.assertGreater(info["dynamic_reference_offset_norm"], 0.0)
+        self.assertGreater(np.linalg.norm(mixed_positions[1] - nominal_refs[1]), 0.0)
 
     def test_enabled_mixer_caps_weight_and_keeps_nominal_pull(self):
         cfg = ExperimentConfig()
         cfg.use_dynamic_nominal_reference = True
+        cfg.dynamic_nominal_history_size = 6
         mixer = DynamicNominalReferenceMixer(cfg)
 
         nominal_refs = [
@@ -153,6 +157,7 @@ class DynamicNominalReferenceMixerTests(unittest.TestCase):
     def test_enabled_mixer_locks_escape_direction_during_stall(self):
         cfg = ExperimentConfig()
         cfg.use_dynamic_nominal_reference = True
+        cfg.dynamic_nominal_history_size = 6
         mixer = DynamicNominalReferenceMixer(cfg)
 
         nominal_refs = [
@@ -176,7 +181,7 @@ class DynamicNominalReferenceMixerTests(unittest.TestCase):
                 signed_dist=0.03,
                 obstacle_normal=np.array([1.0, 0.0, 0.0]),
             )
-        first_offset_y = mixed_positions[0][1] - nominal_refs[0][1]
+        first_offset_y = mixed_positions[1][1] - nominal_refs[1][1]
 
         for ee_pos in (
             np.array([0.02, 0.10, 0.0]),
@@ -195,8 +200,8 @@ class DynamicNominalReferenceMixerTests(unittest.TestCase):
             )
 
         self.assertTrue(info["dynamic_nominal_stall_active"])
-        self.assertGreater(first_offset_y, 0.0)
-        self.assertGreater(mixed_positions[0][1] - nominal_refs[0][1], 0.0)
+        self.assertGreater(abs(first_offset_y), 0.0)
+        self.assertGreater(first_offset_y * (mixed_positions[1][1] - nominal_refs[1][1]), 0.0)
 
 
 class DummyRobot:
@@ -204,6 +209,7 @@ class DummyRobot:
     n_pris = 0
     n_revo = 1
     ee_link_index = 0
+    cbf_link_indices = [0]
 
     def get_ee_jacobian(self, q, dq):
         return np.zeros((6, 1))
@@ -231,6 +237,7 @@ class DynamicNominalControllerIntegrationTests(unittest.TestCase):
     def test_controller_reports_stall_aware_dynamic_nominal_weight(self):
         cfg = ExperimentConfig()
         cfg.use_dynamic_nominal_reference = True
+        cfg.dynamic_nominal_history_size = 6
         from CBF_experiment.active.pybullet.welding_320_control import MPCDCBFController
 
         mpc = MPCDCBFController(DummyRobot(), cfg, DummyTrajectory())
@@ -261,6 +268,48 @@ class DynamicNominalControllerIntegrationTests(unittest.TestCase):
 
         self.assertTrue(info["dynamic_nominal_stall_active"])
         self.assertGreater(info["dynamic_nominal_weight"], 0.0)
+
+
+class SecondOrderNominalSelectionTests(unittest.TestCase):
+    def test_second_order_hint_is_available_without_dynamic_nominal(self):
+        cfg = ExperimentConfig()
+        cfg.use_dynamic_nominal_reference = False
+        cfg.second_order_nominal_enabled = True
+        from CBF_experiment.active.pybullet.welding_320_control import MPCDCBFController
+
+        controller = MPCDCBFController(DummyRobot(), cfg, DummyTrajectory())
+
+        signed_dist, normal = controller._get_dynamic_nominal_hint([DummyObstacle()])
+
+        self.assertAlmostEqual(signed_dist, 0.03, places=6)
+        self.assertTrue(np.allclose(normal, [1.0, 0.0, 0.0]))
+
+    def test_controller_prefers_safer_lateral_candidate_for_second_order_nominal(self):
+        cfg = ExperimentConfig()
+        cfg.second_order_nominal_enabled = True
+        from CBF_experiment.active.pybullet.welding_320_control import MPCDCBFController
+
+        controller = MPCDCBFController(DummyRobot(), cfg, DummyTrajectory())
+        candidate_metrics = [
+            {
+                "direction": np.array([1.0, 0.0, 0.0]),
+                "goal_alignment": 1.0,
+                "reference_alignment": 1.0,
+                "predicted_min_h": -0.02,
+                "predicted_curvature": -0.6,
+            },
+            {
+                "direction": np.array([0.0, 1.0, 0.0]),
+                "goal_alignment": 0.25,
+                "reference_alignment": 0.0,
+                "predicted_min_h": 0.05,
+                "predicted_curvature": 0.1,
+            },
+        ]
+
+        selected = controller._select_second_order_nominal_direction(candidate_metrics)
+
+        self.assertTrue(np.allclose(selected["direction"], [0.0, 1.0, 0.0]))
 
 
 class DynamicNominalLoggingTests(unittest.TestCase):

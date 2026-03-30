@@ -30,7 +30,7 @@ class ExperimentConfig:
         r"\DifferentiableOptimizationCBF-main\assets\cad_exports\model_CAD\scene\urdf"
         r"\中组立0725(1).stp.SLDASM.urdf"
     )
-    workpiece_position: tuple[float, float, float] = (0, 5.0, 0.10)
+    workpiece_position: tuple[float, float, float] = (-3, 5.0, 0.10)
     workpiece_orientation_deg: tuple[float, float, float] = (0.0, 0.0, 0)
     ignore_all_collisions: bool = False
     start_link_name: str = "l2"
@@ -104,6 +104,16 @@ class ExperimentConfig:
     dynamic_nominal_normal_gain: float = 0.35
     dynamic_nominal_max_weight: float = 0.55
     dynamic_nominal_release_progress: float = 0.06
+    second_order_nominal_enabled: bool = False
+    second_order_nominal_candidate_count: int = 8
+    second_order_nominal_preview_tau: float = 0.04
+    second_order_nominal_fd_eps: float = 0.01
+    second_order_nominal_goal_weight: float = 1.0
+    second_order_nominal_clearance_weight: float = 2.0
+    second_order_nominal_curvature_weight: float = 0.08
+    second_order_nominal_reference_weight: float = 0.35
+    second_order_nominal_activation_distance: float = 0.08
+    second_order_nominal_active_links: int = 2
     progress_end_tolerance: float = 0.02
 
     # MPC
@@ -117,6 +127,13 @@ class ExperimentConfig:
     mpc_smooth_weight: float = 0.2
     mpc_replan_steps: int = 6
     mpc_progress_step_min: float = 0.01
+    mpc_second_order_risk_enabled: bool = True
+    mpc_second_order_risk_horizon: int = 4
+    mpc_second_order_safe_margin: float = 0.01
+    mpc_second_order_preview_tau: float = 0.04
+    mpc_second_order_fd_eps: float = 0.01
+    mpc_second_order_risk_weight: float = 0.2
+    mpc_second_order_shrink_weight: float = 0.1
 
     # RRT
     rrt_max_iterations: int = 2400

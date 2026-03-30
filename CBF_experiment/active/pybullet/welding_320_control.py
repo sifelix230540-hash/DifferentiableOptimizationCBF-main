@@ -16,12 +16,13 @@ try:
 except ImportError:
     pp = None
 
-DEBUG_LOG_PATH = Path(__file__).resolve().parents[3] / "debug-24afbb.log"
+DEBUG_LOG_PATH = Path(__file__).resolve().parents[3] / "debug-31a24e.log"
+DEBUG_SESSION_ID = "31a24e"
 
 
 def _append_debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict):
     payload = {
-        "sessionId": "24afbb",
+        "sessionId": DEBUG_SESSION_ID,
         "runId": run_id,
         "hypothesisId": hypothesis_id,
         "location": location,
@@ -442,6 +443,36 @@ class MPCDCBFController:
         self._lb = np.array([bound[0] for bound in single_bounds])
         self._ub = np.array([bound[1] for bound in single_bounds])
 
+    @staticmethod
+    def _safe_unit(vec: np.ndarray) -> np.ndarray | None:
+        arr = np.asarray(vec, dtype=float).reshape(-1)
+        norm = float(np.linalg.norm(arr))
+        if norm <= 1e-9:
+            return None
+        return arr / norm
+
+    @staticmethod
+    def _project_to_plane(vec: np.ndarray, normal: np.ndarray) -> np.ndarray:
+        arr = np.asarray(vec, dtype=float)
+        nrm = np.asarray(normal, dtype=float)
+        return arr - float(np.dot(arr, nrm)) * nrm
+
+    @classmethod
+    def _orthogonal_unit(cls, normal: np.ndarray) -> np.ndarray:
+        normal = cls._safe_unit(normal)
+        if normal is None:
+            return np.array([1.0, 0.0, 0.0], dtype=float)
+        trial_axes = (
+            np.array([1.0, 0.0, 0.0], dtype=float),
+            np.array([0.0, 1.0, 0.0], dtype=float),
+            np.array([0.0, 0.0, 1.0], dtype=float),
+        )
+        for axis in trial_axes:
+            tangent = cls._safe_unit(np.cross(normal, axis))
+            if tangent is not None:
+                return tangent
+        return np.array([1.0, 0.0, 0.0], dtype=float)
+
     def _build_cbf_data(self, q, dq, obstacles):
         grad_rows, h_vals = [], []
         cbf_meta = []
@@ -506,7 +537,78 @@ class MPCDCBFController:
         self._last_cbf_meta = cbf_meta
         return grad_rows, h_vals
 
-    def _build_qp(self, ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals, orientation_weight):
+    def _build_second_order_risk_terms(
+        self,
+        q,
+        ee_pos: np.ndarray,
+        ref_pos: np.ndarray,
+        ref_positions: list[np.ndarray],
+        active_contexts: list[dict],
+        j_pos: np.ndarray,
+    ) -> list[dict]:
+        if not getattr(self.config, "mpc_second_order_risk_enabled", False):
+            return []
+        if not active_contexts or not ref_positions or not hasattr(self.robot, "set_joint_state"):
+            return []
+        risk_horizon = min(max(int(getattr(self.config, "mpc_second_order_risk_horizon", 0)), 0), len(ref_positions), self.N)
+        if risk_horizon <= 0:
+            return []
+        preview_tau = max(float(getattr(self.config, "mpc_second_order_preview_tau", self.config.mpc_dt)), 1e-6)
+        fd_eps = max(float(getattr(self.config, "mpc_second_order_fd_eps", 0.25 * self.config.mpc_dt)), 1e-6)
+        safe_margin = float(getattr(self.config, "mpc_second_order_safe_margin", self.config.safety_margin))
+        anchor = np.asarray(ref_pos, dtype=float)
+        risk_terms = []
+        for step_idx in range(risk_horizon):
+            target = np.asarray(ref_positions[step_idx], dtype=float)
+            cart_dir = self._safe_unit(target - anchor)
+            anchor = target
+            if cart_dir is None:
+                continue
+            desired_speed = max(float(np.linalg.norm(target - np.asarray(ee_pos, dtype=float))) / max((step_idx + 1) * preview_tau, 1e-6), self.config.mpc_progress_step_min)
+            joint_dir = np.linalg.lstsq(j_pos, desired_speed * cart_dir, rcond=None)[0]
+            joint_dir = np.clip(joint_dir, self._lb, self._ub)
+            if float(np.linalg.norm(joint_dir)) <= 1e-9:
+                continue
+            predicted_min_h = self._evaluate_directional_barrier_value(
+                q=np.asarray(q, dtype=float),
+                joint_direction=joint_dir,
+                active_contexts=active_contexts,
+                step_scale=(step_idx + 1) * preview_tau,
+            )
+            base_min_h = float(min(float(ctx.get("h_val", float("inf"))) for ctx in active_contexts))
+            predicted_curvature = self._estimate_directional_second_order_curvature(
+                q=np.asarray(q, dtype=float),
+                joint_direction=joint_dir,
+                active_contexts=active_contexts,
+                base_min_h=base_min_h,
+                fd_eps=fd_eps,
+            )
+            shortfall = max(safe_margin - float(predicted_min_h), 0.0)
+            negative_curvature = max(-float(predicted_curvature), 0.0)
+            if shortfall <= 0.0 and negative_curvature <= 0.0:
+                continue
+            risk_terms.append({
+                "horizon_step": int(step_idx),
+                "joint_direction": np.asarray(joint_dir, dtype=float),
+                "risk_weight": float(getattr(self.config, "mpc_second_order_risk_weight", 0.0)),
+                "shrink_weight": float(getattr(self.config, "mpc_second_order_shrink_weight", 0.0)),
+                "shortfall": float(shortfall),
+                "negative_curvature": float(negative_curvature),
+            })
+        return risk_terms
+
+    def _build_qp(
+        self,
+        ee_pos,
+        j_pos,
+        j_rot,
+        ref_positions,
+        ref_rotvecs,
+        grad_rows,
+        h_vals,
+        orientation_weight,
+        second_order_risk_terms: list[dict] | None = None,
+    ):
         n, N = self.n, self.N
         mdt = self.config.mpc_dt
         cfg = self.config
@@ -547,10 +649,32 @@ class MPCDCBFController:
             a_cbf[cbf_idx * N : (cbf_idx + 1) * N, :] = np.kron(tril_mdt, grad.reshape(1, -1))
             b_cbf[cbf_idx * N : (cbf_idx + 1) * N] = gamma * h_vals[cbf_idx]
 
+        for term in second_order_risk_terms or []:
+            step_idx = int(np.clip(term.get("horizon_step", 0), 0, N - 1))
+            joint_direction = np.asarray(term.get("joint_direction", np.zeros(n)), dtype=float).reshape(-1)
+            norm = float(np.linalg.norm(joint_direction))
+            if norm <= 1e-9:
+                continue
+            direction = joint_direction / norm
+            weight = (
+                float(term.get("risk_weight", 0.0)) * max(float(term.get("shortfall", 0.0)), 0.0)
+                + float(term.get("shrink_weight", 0.0)) * max(float(term.get("negative_curvature", 0.0)), 0.0)
+            )
+            if weight <= 0.0:
+                continue
+            sl = slice(step_idx * n, (step_idx + 1) * n)
+            h_mat[sl, sl] += 2.0 * weight * np.outer(direction, direction)
+            f_vec[sl] += 2.0 * weight * direction
+
         return h_mat, f_vec, a_cbf, b_cbf
 
     def _get_dynamic_nominal_hint(self, obstacles):
-        if self.config.ignore_all_collisions or not self.config.use_dynamic_nominal_reference:
+        hint_enabled = (
+            bool(getattr(self.config, "use_dynamic_nominal_reference", False))
+            or bool(getattr(self.config, "second_order_nominal_enabled", False))
+            or bool(getattr(self.config, "mpc_second_order_risk_enabled", False))
+        )
+        if self.config.ignore_all_collisions or not hint_enabled:
             return None, None
 
         best_signed_dist = None
@@ -575,6 +699,373 @@ class MPCDCBFController:
                     best_signed_dist = float(signed_dist)
                     best_normal = np.array(normal, dtype=float)
         return best_signed_dist, best_normal
+
+    def _collect_second_order_barrier_context(self, obstacles, h_vals) -> list[dict]:
+        if not getattr(self.config, "second_order_nominal_enabled", False):
+            return []
+        max_links = max(int(getattr(self.config, "second_order_nominal_active_links", 0)), 0)
+        if max_links <= 0 or not self._last_cbf_meta or not h_vals:
+            return []
+        obstacle_by_body = {int(getattr(obs, "body_id", -1)): obs for obs in obstacles}
+        ranked_indices = np.argsort(np.asarray(h_vals, dtype=float))
+        contexts: list[dict] = []
+        for idx in ranked_indices:
+            if len(contexts) >= max_links:
+                break
+            meta = dict(self._last_cbf_meta[int(idx)])
+            obs = obstacle_by_body.get(int(meta.get("obs_body_id", -1)))
+            if obs is None:
+                continue
+            meta["obstacle"] = obs
+            meta["h_val"] = float(h_vals[int(idx)])
+            contexts.append(meta)
+        return contexts
+
+    def _evaluate_barrier_context_min_h(self, q_eval, active_contexts: list[dict]) -> float:
+        if not active_contexts:
+            return float("inf")
+        if not hasattr(self.robot, "set_joint_state"):
+            return float(min(float(ctx.get("h_val", float("inf"))) for ctx in active_contexts))
+        q_eval = np.asarray(q_eval, dtype=float)
+        dq_eval = np.zeros_like(q_eval)
+        q_backup = None
+        dq_backup = None
+        if hasattr(self.robot, "get_joint_state"):
+            try:
+                q_backup, dq_backup = self.robot.get_joint_state()
+            except Exception:
+                q_backup, dq_backup = None, None
+        try:
+            self.robot.set_joint_state(q_eval, dq_eval)
+        except TypeError:
+            self.robot.set_joint_state(q_eval)
+        try:
+            min_h = float("inf")
+            max_dist = max(1.0, getattr(self.config, "second_order_nominal_activation_distance", 0.08) * 4.0)
+            for ctx in active_contexts:
+                link_index = int(ctx["link_index"])
+                obs = ctx["obstacle"]
+                obs_body_id = int(getattr(obs, "body_id", -1))
+                if obs_body_id >= 0:
+                    closest = self.robot.get_closest_points_to_obstacle(link_index, obs_body_id, max_dist=max_dist)
+                    if closest is None:
+                        continue
+                    signed_dist = float(closest["signed_dist"])
+                else:
+                    link_pos = self.robot.get_link_origin(link_index)
+                    signed_dist, _ = obs.compute_distance(link_pos)
+                    signed_dist = float(signed_dist)
+                min_h = min(min_h, signed_dist - self.config.safety_margin)
+            return min_h
+        finally:
+            if q_backup is not None:
+                try:
+                    self.robot.set_joint_state(q_backup, dq_backup)
+                except TypeError:
+                    self.robot.set_joint_state(q_backup)
+
+    def _evaluate_directional_barrier_value(self, q, joint_direction: np.ndarray, active_contexts: list[dict], step_scale: float) -> float:
+        q = np.asarray(q, dtype=float)
+        u_dir = np.asarray(joint_direction, dtype=float)
+        return self._evaluate_barrier_context_min_h(q + float(step_scale) * u_dir, active_contexts)
+
+    def _estimate_directional_second_order_curvature(
+        self,
+        q,
+        joint_direction: np.ndarray,
+        active_contexts: list[dict],
+        base_min_h: float,
+        fd_eps: float,
+    ) -> float:
+        eps = max(float(fd_eps), 1e-6)
+        forward_h = self._evaluate_directional_barrier_value(q, joint_direction, active_contexts, eps)
+        backward_h = self._evaluate_directional_barrier_value(q, joint_direction, active_contexts, -eps)
+        return float((forward_h - 2.0 * float(base_min_h) + backward_h) / (eps ** 2))
+
+    def _build_nominal_direction_candidates(
+        self,
+        ee_pos: np.ndarray,
+        ref_pos: np.ndarray,
+        ref_positions: list[np.ndarray],
+        obstacle_normal: np.ndarray | None,
+    ) -> list[np.ndarray]:
+        target_point = ref_positions[0] if ref_positions else ref_pos
+        goal_dir = self._safe_unit(np.asarray(target_point, dtype=float) - np.asarray(ee_pos, dtype=float))
+        ref_dir = self._safe_unit(np.asarray(target_point, dtype=float) - np.asarray(ref_pos, dtype=float))
+        normal = self._safe_unit(obstacle_normal) if obstacle_normal is not None else None
+        candidates: list[np.ndarray] = []
+
+        def append_candidate(vec):
+            unit = self._safe_unit(vec)
+            if unit is None:
+                return
+            if any(abs(float(np.dot(unit, existing))) > 0.995 for existing in candidates):
+                return
+            candidates.append(unit)
+
+        append_candidate(ref_dir if ref_dir is not None else goal_dir)
+        append_candidate(goal_dir)
+        if normal is not None:
+            tangent = self._safe_unit(self._project_to_plane(goal_dir if goal_dir is not None else normal, normal))
+            if tangent is None:
+                tangent = self._orthogonal_unit(normal)
+            lateral = self._safe_unit(np.cross(normal, tangent))
+            append_candidate(tangent)
+            append_candidate(normal)
+            append_candidate(tangent + 0.4 * normal)
+            append_candidate(tangent - 0.4 * normal)
+            if lateral is not None:
+                append_candidate(lateral)
+                append_candidate(-lateral)
+                append_candidate(lateral + 0.25 * normal)
+        return candidates[: max(int(getattr(self.config, "second_order_nominal_candidate_count", 0)), 1)]
+
+    def _select_second_order_nominal_direction(self, candidate_metrics: list[dict]) -> dict | None:
+        if not candidate_metrics:
+            return None
+        cfg = self.config
+        best = None
+        for metric in candidate_metrics:
+            clearance = float(metric.get("predicted_min_h", -float("inf")))
+            curvature = float(metric.get("predicted_curvature", 0.0))
+            clearance_shortfall = max(-clearance, 0.0)
+            score = (
+                float(getattr(cfg, "second_order_nominal_goal_weight", 1.0)) * float(metric.get("goal_alignment", 0.0))
+                + float(getattr(cfg, "second_order_nominal_clearance_weight", 1.0)) * clearance
+                - float(getattr(cfg, "second_order_nominal_clearance_weight", 1.0)) * 32.0 * clearance_shortfall
+                - float(getattr(cfg, "second_order_nominal_curvature_weight", 0.0)) * max(-curvature, 0.0)
+                + float(getattr(cfg, "second_order_nominal_reference_weight", 0.0)) * float(metric.get("reference_alignment", 0.0))
+            )
+            candidate = dict(metric)
+            candidate["score"] = float(score)
+            if best is None or float(candidate["score"]) > float(best["score"]):
+                best = candidate
+        return best
+
+    def _apply_second_order_nominal_preview(
+        self,
+        q,
+        ee_pos: np.ndarray,
+        ref_pos: np.ndarray,
+        ref_positions: list[np.ndarray],
+        active_contexts: list[dict],
+        obstacle_normal: np.ndarray | None,
+        dynamic_info: dict,
+        j_pos: np.ndarray,
+    ) -> tuple[list[np.ndarray], dict]:
+        preview_info = {
+            "second_order_nominal_active": False,
+            "second_order_nominal_weight": 0.0,
+            "second_order_nominal_best_score": 0.0,
+            "second_order_nominal_predicted_min_h": float("inf"),
+            "second_order_nominal_predicted_curvature": 0.0,
+            "second_order_nominal_selected_direction": None,
+            "second_order_nominal_skip_reason": None,
+        }
+        if not getattr(self.config, "second_order_nominal_enabled", False):
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+        if not ref_positions or not active_contexts or obstacle_normal is None:
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+        if not hasattr(self.robot, "set_joint_state"):
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+
+        signed_dist = float(dynamic_info.get("dynamic_nominal_signed_dist", float("inf")))
+        activation_distance = max(
+            float(getattr(self.config, "second_order_nominal_activation_distance", 0.08)),
+            self.config.safety_margin * 5.0,
+        )
+        stall_active = bool(dynamic_info.get("dynamic_nominal_stall_active", False))
+        # region agent log
+        _append_debug_log(
+            f"solve_{self._step_count}",
+            "SO2",
+            "welding_320_control.py:875",
+            "Second-order preview gate",
+            {
+                "step_count": int(self._step_count),
+                "signed_dist": float(signed_dist),
+                "activation_distance": float(activation_distance),
+                "stall_active": bool(stall_active),
+                "active_context_count": int(len(active_contexts)),
+                "obstacle_normal_norm": float(np.linalg.norm(obstacle_normal)),
+                "second_order_enabled": bool(getattr(self.config, "second_order_nominal_enabled", False)),
+            },
+        )
+        # endregion
+        if signed_dist >= activation_distance and not stall_active:
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+
+        base_min_h = float(min(float(ctx.get("h_val", float("inf"))) for ctx in active_contexts))
+        if not np.isfinite(base_min_h):
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+
+        candidates = self._build_nominal_direction_candidates(
+            ee_pos=np.asarray(ee_pos, dtype=float),
+            ref_pos=np.asarray(ref_pos, dtype=float),
+            ref_positions=[np.asarray(pos, dtype=float) for pos in ref_positions],
+            obstacle_normal=np.asarray(obstacle_normal, dtype=float),
+        )
+        if not candidates:
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+
+        goal_dir = self._safe_unit(np.asarray(ref_positions[0], dtype=float) - np.asarray(ee_pos, dtype=float))
+        ref_dir = self._safe_unit(np.asarray(ref_positions[0], dtype=float) - np.asarray(ref_pos, dtype=float))
+        preview_tau = max(float(getattr(self.config, "second_order_nominal_preview_tau", self.config.mpc_dt)), 1e-6)
+        fd_eps = max(float(getattr(self.config, "second_order_nominal_fd_eps", 0.25 * self.config.mpc_dt)), 1e-6)
+        base_step = max(float(np.linalg.norm(np.asarray(ref_positions[0], dtype=float) - np.asarray(ref_pos, dtype=float))), self.config.mpc_progress_step_min)
+        desired_speed = base_step / preview_tau
+
+        candidate_metrics = []
+        for cart_dir in candidates:
+            joint_dir = np.linalg.lstsq(j_pos, desired_speed * cart_dir, rcond=None)[0]
+            joint_dir = np.clip(joint_dir, self._lb, self._ub)
+            if float(np.linalg.norm(joint_dir)) <= 1e-9:
+                continue
+            predicted_min_h = self._evaluate_directional_barrier_value(q, joint_dir, active_contexts, preview_tau)
+            predicted_curvature = self._estimate_directional_second_order_curvature(
+                q=q,
+                joint_direction=joint_dir,
+                active_contexts=active_contexts,
+                base_min_h=base_min_h,
+                fd_eps=fd_eps,
+            )
+            candidate_metrics.append({
+                "direction": np.asarray(cart_dir, dtype=float),
+                "joint_direction": np.asarray(joint_dir, dtype=float),
+                "goal_alignment": float(np.dot(cart_dir, goal_dir)) if goal_dir is not None else 0.0,
+                "reference_alignment": float(np.dot(cart_dir, ref_dir)) if ref_dir is not None else 0.0,
+                "predicted_min_h": float(predicted_min_h),
+                "predicted_curvature": float(predicted_curvature),
+            })
+        scored_candidates = []
+        for metric in candidate_metrics:
+            scored = self._select_second_order_nominal_direction([metric])
+            if scored is not None:
+                scored_candidates.append(scored)
+        selected = self._select_second_order_nominal_direction(candidate_metrics)
+        ranked_candidates = sorted(scored_candidates, key=lambda item: float(item.get("score", -float("inf"))), reverse=True)
+        prev_selected_direction = getattr(self, "_debug_prev_second_order_nominal_direction", None)
+        selected_vs_prev_cos = None
+        if (
+            selected is not None
+            and prev_selected_direction is not None
+            and np.linalg.norm(prev_selected_direction) > 1e-9
+        ):
+            selected_vs_prev_cos = float(
+                np.dot(np.asarray(selected["direction"], dtype=float), prev_selected_direction)
+                / max(
+                    np.linalg.norm(np.asarray(selected["direction"], dtype=float)) * np.linalg.norm(prev_selected_direction),
+                    1e-9,
+                )
+            )
+        # region agent log
+        _append_debug_log(
+            f"solve_{self._step_count}",
+            "SO1",
+            "welding_320_control.py:921",
+            "Second-order candidate ranking",
+            {
+                "step_count": int(self._step_count),
+                "base_min_h": float(base_min_h),
+                "candidate_count": int(len(candidate_metrics)),
+                "selected_direction": None
+                if selected is None
+                else np.asarray(selected["direction"], dtype=float).tolist(),
+                "selected_score": None if selected is None else float(selected.get("score", 0.0)),
+                "selected_vs_prev_cos": selected_vs_prev_cos,
+                "preview_score_threshold": 0.0,
+                "top_candidates": [
+                    {
+                        "direction": np.asarray(item["direction"], dtype=float).tolist(),
+                        "score": float(item.get("score", 0.0)),
+                        "predicted_min_h": float(item.get("predicted_min_h", float("inf"))),
+                        "predicted_curvature": float(item.get("predicted_curvature", 0.0)),
+                        "goal_alignment": float(item.get("goal_alignment", 0.0)),
+                        "reference_alignment": float(item.get("reference_alignment", 0.0)),
+                    }
+                    for item in ranked_candidates[:3]
+                ],
+            },
+        )
+        # endregion
+        if selected is None:
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+        if float(selected.get("score", 0.0)) <= 0.0:
+            preview_info.update({
+                "second_order_nominal_best_score": float(selected.get("score", 0.0)),
+                "second_order_nominal_predicted_min_h": float(selected["predicted_min_h"]),
+                "second_order_nominal_predicted_curvature": float(selected["predicted_curvature"]),
+                "second_order_nominal_selected_direction": np.asarray(selected["direction"], dtype=float).tolist(),
+                "second_order_nominal_skip_reason": "non_positive_score",
+            })
+            # region agent log
+            _append_debug_log(
+                f"solve_{self._step_count}",
+                "SO3",
+                "welding_320_control.py:931",
+                "Second-order preview suppressed",
+                {
+                    "step_count": int(self._step_count),
+                    "reason": "non_positive_score",
+                    "selected_score": float(selected.get("score", 0.0)),
+                    "selected_direction": np.asarray(selected["direction"], dtype=float).tolist(),
+                    "predicted_min_h": float(selected["predicted_min_h"]),
+                    "predicted_curvature": float(selected["predicted_curvature"]),
+                },
+            )
+            # endregion
+            return [np.asarray(pos, dtype=float).copy() for pos in ref_positions], preview_info
+
+        clearance_ratio = float(
+            np.clip(
+                (activation_distance - signed_dist) / max(activation_distance - self.config.safety_margin, 1e-6),
+                0.0,
+                1.0,
+            )
+        )
+        preview_weight = clearance_ratio * (1.0 if stall_active else 0.4)
+        shifted_refs = [np.asarray(pos, dtype=float).copy() for pos in ref_positions]
+        for idx, nominal_pos in enumerate(shifted_refs):
+            shifted_refs[idx] = nominal_pos + preview_weight * (idx + 1) * base_step * np.asarray(selected["direction"], dtype=float)
+        self._debug_prev_second_order_nominal_direction = np.asarray(selected["direction"], dtype=float).copy()
+        first_shift_norm = (
+            float(np.linalg.norm(shifted_refs[0] - np.asarray(ref_positions[0], dtype=float)))
+            if shifted_refs
+            else 0.0
+        )
+        last_shift_norm = (
+            float(np.linalg.norm(shifted_refs[-1] - np.asarray(ref_positions[-1], dtype=float)))
+            if shifted_refs
+            else 0.0
+        )
+        # region agent log
+        _append_debug_log(
+            f"solve_{self._step_count}",
+            "SO3",
+            "welding_320_control.py:935",
+            "Second-order reference shift",
+            {
+                "step_count": int(self._step_count),
+                "base_step": float(base_step),
+                "preview_tau": float(preview_tau),
+                "fd_eps": float(fd_eps),
+                "clearance_ratio": float(clearance_ratio),
+                "preview_weight": float(preview_weight),
+                "first_shift_norm": float(first_shift_norm),
+                "last_shift_norm": float(last_shift_norm),
+                "selected_direction": np.asarray(selected["direction"], dtype=float).tolist(),
+            },
+        )
+        # endregion
+        preview_info.update({
+            "second_order_nominal_active": preview_weight > 0.0,
+            "second_order_nominal_weight": float(preview_weight),
+            "second_order_nominal_best_score": float(selected.get("score", 0.0)),
+            "second_order_nominal_predicted_min_h": float(selected["predicted_min_h"]),
+            "second_order_nominal_predicted_curvature": float(selected["predicted_curvature"]),
+            "second_order_nominal_selected_direction": np.asarray(selected["direction"], dtype=float).tolist(),
+        })
+        return shifted_refs, preview_info
 
     def _compute_active_orientation_weight(self, current_progress: float) -> tuple[float, float]:
         cfg = self.config
@@ -612,12 +1103,24 @@ class MPCDCBFController:
     ):
         self._step_count += 1
         run_id = f"solve_{self._step_count}"
+        second_order_cache_guard = False
+        if self._cached_info is not None and bool(getattr(self.config, "second_order_nominal_enabled", False)):
+            activation_distance = max(
+                float(getattr(self.config, "second_order_nominal_activation_distance", 0.08)),
+                self.config.safety_margin * 5.0,
+            )
+            cached_signed_dist = float(self._cached_info.get("dynamic_nominal_signed_dist", float("inf")))
+            second_order_cache_guard = (
+                bool(self._cached_info.get("second_order_nominal_active", False))
+                or cached_signed_dist < activation_distance
+            )
         can_use_cache = (
             self._cached_u is not None
             and self._step_count % self.config.mpc_replan_steps != 0
             and self._cached_info is not None
             and float(self._cached_info.get("min_h", 1.0)) >= 0.0
             and not bool(self._cached_info.get("dynamic_nominal_stall_active", False))
+            and not second_order_cache_guard
         )
         if can_use_cache:
             # region agent log
@@ -638,6 +1141,23 @@ class MPCDCBFController:
             )
             # endregion
             return self._cached_u, self._cached_info
+        if self._cached_u is not None and self._cached_info is not None and second_order_cache_guard:
+            # region agent log
+            _append_debug_log(
+                run_id,
+                "H4",
+                "welding_320_control.py:520",
+                "Bypassing cached control for second-order zone",
+                {
+                    "step_count": int(self._step_count),
+                    "replan_steps": int(self.config.mpc_replan_steps),
+                    "cached_u_norm": float(np.linalg.norm(self._cached_u)),
+                    "cached_second_order_active": bool(self._cached_info.get("second_order_nominal_active", False)),
+                    "cached_signed_dist": float(self._cached_info.get("dynamic_nominal_signed_dist", float("inf"))),
+                    "cached_min_h": float(self._cached_info.get("min_h", float("inf"))),
+                },
+            )
+            # endregion
 
         n, N = self.n, self.N
         cfg = self.config
@@ -740,8 +1260,35 @@ class MPCDCBFController:
             worst_idx = int(np.argmin(h_vals))
             worst_cbf = dict(self._last_cbf_meta[worst_idx])
             worst_cbf["cbf_index"] = worst_idx
+        second_order_context = self._collect_second_order_barrier_context(obstacles, h_vals)
+        ref_positions, second_order_info = self._apply_second_order_nominal_preview(
+            q=np.asarray(q, dtype=float),
+            ee_pos=np.asarray(ee_pos, dtype=float),
+            ref_pos=np.asarray(ref_pos, dtype=float),
+            ref_positions=[np.asarray(pos, dtype=float) for pos in ref_positions],
+            active_contexts=second_order_context,
+            obstacle_normal=dynamic_normal,
+            dynamic_info=dynamic_info,
+            j_pos=j_pos,
+        )
+        second_order_risk_terms = self._build_second_order_risk_terms(
+            q=np.asarray(q, dtype=float),
+            ee_pos=np.asarray(ee_pos, dtype=float),
+            ref_pos=np.asarray(ref_pos, dtype=float),
+            ref_positions=[np.asarray(pos, dtype=float) for pos in ref_positions],
+            active_contexts=second_order_context,
+            j_pos=j_pos,
+        )
         h_mat, f_vec, a_cbf, b_cbf = self._build_qp(
-            ee_pos, j_pos, j_rot, ref_positions, ref_rotvecs, grad_rows, h_vals, active_orientation_weight
+            ee_pos,
+            j_pos,
+            j_rot,
+            ref_positions,
+            ref_rotvecs,
+            grad_rows,
+            h_vals,
+            active_orientation_weight,
+            second_order_risk_terms=second_order_risk_terms,
         )
 
         constraints = []
@@ -1075,6 +1622,15 @@ class MPCDCBFController:
             "progress_step": float(ds_ref),
             "cbf_contacts": [dict(meta) for meta in self._last_cbf_meta],
             **dynamic_info,
+            **second_order_info,
+            "mpc_second_order_risk_term_count": int(len(second_order_risk_terms)),
+            "mpc_second_order_risk_cost": float(
+                sum(
+                    float(term.get("risk_weight", 0.0)) * float(term.get("shortfall", 0.0))
+                    + float(term.get("shrink_weight", 0.0)) * float(term.get("negative_curvature", 0.0))
+                    for term in second_order_risk_terms
+                )
+            ),
         }
         self._cached_u = u_cmd
         self._cached_info = info

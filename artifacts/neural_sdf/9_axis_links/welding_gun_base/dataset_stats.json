@@ -1,0 +1,29 @@
+{
+  "link_name": "welding_gun_base",
+  "mesh_path": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\assets\\robots\\9_axis\\meshes\\welding_gun_base.STL",
+  "n_near_surface": 250000,
+  "n_uniform": 50000,
+  "epochs": 3000,
+  "final_loss": 0.0029659015126526356,
+  "training_seconds": 97.09840202331543,
+  "center": [
+    -0.02955307811498642,
+    0.0,
+    0.1104167252779007
+  ],
+  "scale": 0.20090306550264359,
+  "aabb_min": [
+    -1.2999999523162842,
+    -0.4841684103012085,
+    -0.8645345568656921
+  ],
+  "aabb_max": [
+    1.2999999523162842,
+    0.4841684103012085,
+    0.8645345568656921
+  ],
+  "n_vertices": 2849,
+  "n_faces": 5762,
+  "n_train_points": 300000,
+  "is_watertight": false
+}

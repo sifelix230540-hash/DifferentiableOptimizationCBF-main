@@ -1,0 +1,29 @@
+{
+  "link_name": "link05",
+  "mesh_path": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\assets\\robots\\9_axis\\meshes\\link05.STL",
+  "n_near_surface": 250000,
+  "n_uniform": 50000,
+  "epochs": 3000,
+  "final_loss": 0.017450787127017975,
+  "training_seconds": 126.2727963924408,
+  "center": [
+    0.2150000035762787,
+    -1.2285596650367274e-18,
+    -0.14282359182834625
+  ],
+  "scale": 0.2774871326982975,
+  "aabb_min": [
+    -1.2999999523162842,
+    -0.5250635147094727,
+    -0.5840620994567871
+  ],
+  "aabb_max": [
+    1.2999999523162842,
+    0.5250635147094727,
+    0.5840620994567871
+  ],
+  "n_vertices": 7458,
+  "n_faces": 14904,
+  "n_train_points": 300000,
+  "is_watertight": true
+}

@@ -6,7 +6,7 @@ from matplotlib.patches import Circle, Polygon
 import time
 from pathlib import Path
 
-from lqp.qp_policy import LearnedQPPolicy
+#from lqp.qp_policy import LearnedQPPolicy
 
 # =====================================================================
 # Nominal vs CBF-QP vs MPC-DCBF Benchmark
@@ -30,13 +30,19 @@ kd = 1.5
 slack_weight = 800.0
 
 # --- MPC-DCBF 专有参数 ---
-N_mpc = 30           # 预测时域 (dt=0.05时, 往后看0.5s)
-gamma_dcbf = 0.01    # 离散CBF的衰减率 (越小越保守, 需匹配dt)
+N_mpc = 12           # 预测时域 (dt=0.05时, 往后看0.5s)
+gamma_dcbf = 0.5    # 离散CBF的衰减率 (越小越保守, 需匹配dt)
+kappa_cbf = 0.5     # 速度增广系数 ψ = h + κ·ḣ, 使 u 系数从 O(dt²) 提升到 O(κ·dt)
 mpc_Q = 2          # 目标跟踪权重
 mpc_track_W = 0   # 参考轨迹跟踪权重
 mpc_V = 0.2          # 速度衰减权重
 mpc_R = 0.08          # 控制输入平滑权重
-mpc_slack_W = 20000 # 避障松弛变量惩罚权重
+mpc_dU_W = 0.35       # 控制增量平滑权重
+mpc_slack_W = 10000 # 避障松弛变量惩罚权重
+second_order_activation_dist = 0.9
+second_order_bias_gain = 5
+second_order_velocity_gain = 0.25
+second_order_ref_smoothing = 0.25
 
 # --- 停滞脱困参数 ---
 stagnation_window = 20
@@ -293,14 +299,148 @@ def step_dynamics(x, u):
     x_next[2:] = vel + dt * acc
     return x_next
 
-def build_track_reference(x0):
+
+def barrier_terms(pos, obs):
+    center = np.asarray(obs["center"], dtype=float)
+    rsafe = float(obs["radius"]) + safety_margin
+    diff = np.asarray(pos, dtype=float) - center
+    dist = np.linalg.norm(diff)
+    if dist < 1e-9:
+        grad = np.array([1.0, 0.0], dtype=float)
+        hess = np.eye(2, dtype=float) / max(rsafe, 1e-6)
+        return -rsafe, grad, hess
+    grad = diff / dist
+    hess = (np.eye(2, dtype=float) - np.outer(grad, grad)) / max(dist, 1e-6)
+    return dist - rsafe, grad, hess
+
+
+def select_tangent_direction(pos, center, grad, fallback_sign=1.0):
+    tangent = np.array([grad[1], -grad[0]], dtype=float)
+    tangent_norm = np.linalg.norm(tangent)
+    if tangent_norm < 1e-9:
+        tangent = np.array([0.0, 1.0], dtype=float)
+    else:
+        tangent = tangent / tangent_norm
+    lateral_offset = float(np.asarray(pos, dtype=float)[1] - np.asarray(center, dtype=float)[1])
+    if abs(lateral_offset) > 1e-6 and lateral_offset * tangent[1] < 0.0:
+        tangent = -tangent
+    elif abs(lateral_offset) <= 1e-6 and fallback_sign * tangent[1] < 0.0:
+        tangent = -tangent
+    return tangent
+
+
+def build_second_order_reference(x0, obs_cache, u_seed=None):
+    X_track = np.zeros((N_mpc + 1, 4))
+    U_track = np.zeros((N_mpc, 2))
+    X_track[0] = x0
+    seed = np.zeros((N_mpc, 2), dtype=float) if u_seed is None else np.asarray(u_seed, dtype=float)
+    smooth_alpha = float(np.clip(second_order_ref_smoothing, 0.0, 0.95))
+
+    for k in range(N_mpc):
+        xk = X_track[k]
+        u_nom = nominal_ctrl(xk)
+        prev_u = U_track[k - 1] if k > 0 else seed[min(k, len(seed) - 1)]
+        fallback_sign = np.sign(prev_u[1]) if abs(prev_u[1]) > 1e-6 else choose_orthogonal_bias_sign(xk)
+        bias = np.zeros(2, dtype=float)
+        for obs in obs_cache[min(k, len(obs_cache) - 1)]:
+            h, grad, hess = barrier_terms(xk[:2], obs)
+            activation = max(second_order_activation_dist - h, 0.0)
+            if activation <= 0.0:
+                continue
+            tangent = select_tangent_direction(xk[:2], obs["center"], grad, fallback_sign=fallback_sign)
+            curvature_gain = max(float(tangent @ hess @ tangent), 0.0)
+            normal_speed = max(float(-(grad @ xk[2:])), 0.0)
+            nominal_closing = max(float(-(grad @ (u_nom / mass))), 0.0)
+            bias_mag = second_order_bias_gain * activation * curvature_gain * (
+                1.0 + second_order_velocity_gain * normal_speed + nominal_closing
+            )
+            bias += bias_mag * tangent
+        u_target = np.clip(u_nom + bias, -u_max, u_max)
+        u_ref = (1.0 - smooth_alpha) * u_target + smooth_alpha * prev_u
+        U_track[k] = np.clip(u_ref, -u_max, u_max)
+        X_track[k + 1] = step_dynamics(X_track[k], U_track[k])
+    return X_track, U_track
+
+def build_track_reference(x0, obs_cache=None, u_seed=None):
     """沿当前名义控制滚出参考轨迹，供 MPC 跟踪。"""
+    if obs_cache is not None:
+        X_track, _ = build_second_order_reference(x0, obs_cache, u_seed)
+        return X_track
     X_track = np.zeros((N_mpc + 1, 4))
     X_track[0] = x0
     for k in range(N_mpc):
         u_ref = nominal_ctrl(X_track[k])
         X_track[k + 1] = step_dynamics(X_track[k], u_ref)
     return X_track
+
+
+def mpc_status_acceptable(status):
+    return status in (cp.OPTIMAL, getattr(cp, "OPTIMAL_INACCURATE", None))
+
+
+def discrete_cbf_terms(x, obs):
+    """速度增广离散 CBF: ψ = h + κ·ḣ, 使 u 对约束系数从 O(dt²) 提升到 O(κ·dt)."""
+    pos = np.asarray(x[:2], dtype=float)
+    vel = np.asarray(x[2:], dtype=float)
+    v_obs = np.asarray(obs["velocity"], dtype=float)
+    center = np.asarray(obs["center"], dtype=float)
+    rsafe = float(obs["radius"]) + safety_margin
+
+    diff_now = pos - center
+    dist_now = np.linalg.norm(diff_now)
+    if dist_now < 1e-9:
+        g_now = np.array([1.0, 0.0], dtype=float)
+        h_now = -rsafe
+    else:
+        g_now = diff_now / dist_now
+        h_now = dist_now - rsafe
+    psi_now = h_now + kappa_cbf * float(g_now @ (vel - v_obs))
+
+    p_free = pos + dt * vel
+    c_next = center + dt * v_obs
+    d_free = p_free - c_next
+    dist_free = np.linalg.norm(d_free)
+    if dist_free < 1e-9:
+        g_free = np.array([1.0, 0.0], dtype=float)
+        h_free = -rsafe
+    else:
+        g_free = d_free / dist_free
+        h_free = dist_free - rsafe
+    psi_free = h_free + kappa_cbf * float(g_free @ (vel - v_obs))
+
+    coeff = (0.5 * dt**2 + kappa_cbf * dt) / mass
+    a_row = coeff * g_free
+    b_val = psi_free - (1.0 - gamma_dcbf) * psi_now
+    return a_row, b_val, g_free
+
+
+def compute_single_step_cbf_safe_control(x, u_nom, obstacles):
+    u_cmd = np.clip(np.asarray(u_nom, dtype=float), -u_max, u_max)
+    critical_obs = None
+    critical_h = float("inf")
+    for obs in obstacles:
+        h_now, grad_now, _ = barrier_terms(np.asarray(x[:2], dtype=float), obs)
+        if h_now < critical_h:
+            critical_h = h_now
+            critical_obs = (obs, grad_now)
+        a_row, b_val, grad_next = discrete_cbf_terms(x, obs)
+        margin = float(a_row @ u_cmd + b_val)
+        if margin >= 0.0:
+            continue
+        denom = float(a_row @ a_row)
+        if denom > 1e-12:
+            u_cmd = u_cmd - (margin / denom) * a_row
+        else:
+            tangent = select_tangent_direction(np.asarray(x[:2], dtype=float), obs["center"], grad_next)
+            u_cmd = u_cmd + 0.25 * u_max * tangent
+        u_cmd = np.clip(u_cmd, -u_max, u_max)
+    if critical_obs is not None and critical_h < second_order_activation_dist and abs(u_cmd[1]) < 1e-6:
+        obs, grad_now = critical_obs
+        closing = max(float(-(grad_now @ np.asarray(u_nom, dtype=float))), 0.0)
+        if closing > 0.0:
+            tangent = select_tangent_direction(np.asarray(x[:2], dtype=float), obs["center"], grad_now)
+            u_cmd = np.clip(u_cmd + min(0.2 * u_max, 0.3 * closing) * tangent, -u_max, u_max)
+    return u_cmd
 
 def choose_orthogonal_bias_sign(x, default_sign=1.0):
     pos = x[:2]
@@ -349,24 +489,20 @@ def get_min_h(x, obs_list):
 n_obs = len(STATIC_OBS) + len(DYN_OBS_DEFS)
 
 def build_cbf_problem():
-    """DPP-compliant CBF-QP.
-    对二阶质量块采用近似 HOCBF:
-        gh @ (u / mass) + 2 * alpha_cbf * h_dot + alpha_cbf^2 * h + slack >= 0
-    外部预计算 rhs_p[i] = mass * (2 * alpha_cbf * h_dot + alpha_cbf^2 * h)。
-    """
+    """DPP-compliant 单步离散 CBF-QP。"""
     u_var = cp.Variable(2)
     slk = cp.Variable(n_obs, nonneg=True)
     u_des_p = cp.Parameter(2)
-    gh_p = cp.Parameter((n_obs, 2))        # 梯度方向 (2D, DPP ok)
-    rhs_p = cp.Parameter(n_obs)             # 预计算标量 rhs
+    a_p = cp.Parameter((n_obs, 2))
+    b_p = cp.Parameter(n_obs)
 
     cons = [u_var >= -u_max, u_var <= u_max]
     for i in range(n_obs):
-        cons.append(gh_p[i] @ u_var + rhs_p[i] + slk[i] >= 0)
+        cons.append(a_p[i] @ u_var + b_p[i] + slk[i] >= 0)
 
-    obj = cp.Minimize(cp.sum_squares(u_var - u_des_p) + slack_weight * cp.sum(slk))
+    obj = cp.Minimize(cp.sum_squares(u_var - u_des_p) + slack_weight * cp.sum(slk) + 1e-2 * cp.sum_squares(slk))
     prob = cp.Problem(obj, cons)
-    return prob, u_var, u_des_p, gh_p, rhs_p
+    return prob, u_var, u_des_p, a_p, b_p
 
 
 def build_mpc_problem():
@@ -402,10 +538,14 @@ def build_mpc_problem():
 
     x0_p    = cp.Parameter(4)
     X_tr_p  = cp.Parameter((N_mpc + 1, 4))
+    U_tr_p  = cp.Parameter((N_mpc, 2))
+    u_prev_p = cp.Parameter(2)
     N_k_p   = cp.Parameter((M, 2))   # 法向量 k,   行 = k*n_obs+j
     N_kp1_p = cp.Parameter((M, 2))   # 法向量 k+1
     c_k_p   = cp.Parameter(M)        # h_k 的常数项
     c_kp1_p = cp.Parameter(M)        # h_k+1 的常数项
+    vobs_nk_p   = cp.Parameter(M)    # n_k · v_obs_k (障碍物速度在法向上的投影)
+    vobs_nkp1_p = cp.Parameter(M)    # n_{k+1} · v_obs_{k+1}
 
     cons = [X[0] == x0_p]
     cost = 0.0
@@ -418,22 +558,30 @@ def build_mpc_problem():
             mpc_Q * cp.sum_squares(X[k + 1, :2] - goal)
             + mpc_track_W * cp.sum_squares(X[k + 1] - X_tr_p[k + 1])
             + mpc_V * cp.sum_squares(X[k + 1, 2:])
-            + mpc_R * cp.sum_squares(U[k])
+            + mpc_R * cp.sum_squares(U[k] - U_tr_p[k])
         )
+        if k == 0:
+            cost += mpc_dU_W * cp.sum_squares(U[k] - u_prev_p)
+        else:
+            cost += mpc_dU_W * cp.sum_squares(U[k] - U[k - 1])
 
     for k in range(N_mpc):
         for j in range(n_obs):
             idx = k * n_obs + j
-            hk_expr   = c_k_p[idx]   + N_k_p[idx]   @ X[k, :2]
-            hkp1_expr = c_kp1_p[idx] + N_kp1_p[idx] @ X[k + 1, :2]
-            cons.append(hkp1_expr >= (1 - gamma_dcbf) * hk_expr - slk[j, k])
-            cons.append(hkp1_expr >= 0)
+            hkp1_pos = c_kp1_p[idx] + N_kp1_p[idx] @ X[k + 1, :2]
+            psik = (c_k_p[idx] + N_k_p[idx] @ X[k, :2]
+                    + kappa_cbf * (N_k_p[idx] @ X[k, 2:] - vobs_nk_p[idx]))
+            psikp1 = (c_kp1_p[idx] + N_kp1_p[idx] @ X[k + 1, :2]
+                      + kappa_cbf * (N_kp1_p[idx] @ X[k + 1, 2:] - vobs_nkp1_p[idx]))
+            cons.append(psikp1 >= (1 - gamma_dcbf) * psik - slk[j, k])
+            cons.append(hkp1_pos >= 0)
 
     cost += mpc_slack_W * cp.sum_squares(slk)
     prob = cp.Problem(cp.Minimize(cost), cons)
 
-    params = {"x0": x0_p, "X_tr": X_tr_p, "N_k": N_k_p, "N_kp1": N_kp1_p,
-              "c_k": c_k_p, "c_kp1": c_kp1_p}
+    params = {"x0": x0_p, "X_tr": X_tr_p, "U_tr": U_tr_p, "u_prev": u_prev_p,
+              "N_k": N_k_p, "N_kp1": N_kp1_p, "c_k": c_k_p, "c_kp1": c_kp1_p,
+              "vobs_nk": vobs_nk_p, "vobs_nkp1": vobs_nkp1_p}
     return prob, X, U, params
 
 # =====================================================================
@@ -453,7 +601,7 @@ def simulate(mode="nominal"):
 
     # 预构建参数化问题（只构建一次！）
     if mode == "cbf":
-        cbf_prob, cbf_u, cbf_u_des, cbf_gh, cbf_rhs = build_cbf_problem()
+        cbf_prob, cbf_u, cbf_u_des, cbf_a, cbf_b = build_cbf_problem()
     elif mode == "mpc":
         mpc_prob, mpc_X, mpc_U, mpc_p = build_mpc_problem()
 
@@ -466,19 +614,7 @@ def simulate(mode="nominal"):
 
         dist_hist.append(np.linalg.norm(x[:2] - goal))
         speed_hist.append(np.linalg.norm(x[2:]))
-        if is_stagnating(dist_hist, speed_hist) and bias_hold == 0:
-            next_sign = choose_orthogonal_bias_sign(x, bias_sign)
-            if abs(x[1]) < 0.03 and next_sign == bias_sign and len(dist_hist) > 2 * stagnation_window:
-                next_sign = -bias_sign
-            bias_sign = next_sign
-            bias_hold = orth_bias_hold_steps
-
-        u_orth = np.zeros(2)
-        if bias_hold > 0:
-            u_orth = build_orthogonal_bias(x[:2], bias_sign)
-            bias_hold -= 1
-
-        u_des = nominal_ctrl(x, u_bias=u_orth)
+        u_des = nominal_ctrl(x)
         u_cmd = u_des.copy()
 
         # ---------------------------------------------------------
@@ -486,20 +622,12 @@ def simulate(mode="nominal"):
         # ---------------------------------------------------------
         if mode == "cbf":
             cbf_u_des.value = u_des
-            gh_vals = np.zeros((n_obs, 2))
-            rhs_vals = np.zeros(n_obs)
-            pos = x[:2]
-            vel = x[2:]
+            a_vals = np.zeros((n_obs, 2))
+            b_vals = np.zeros(n_obs)
             for i, o in enumerate(obs_current):
-                d_vec = pos - o["center"]
-                nd = np.linalg.norm(d_vec)
-                h = nd - (o["radius"] + safety_margin)
-                gh = d_vec / nd if nd > 1e-9 else np.array([1.0, 0.0])
-                h_dot = gh @ (vel - o["velocity"])
-                gh_vals[i] = gh
-                rhs_vals[i] = mass * (2 * alpha_cbf * h_dot + alpha_cbf**2 * h)
-            cbf_gh.value = gh_vals
-            cbf_rhs.value = rhs_vals
+                a_vals[i], b_vals[i], _ = discrete_cbf_terms(x, o)
+            cbf_a.value = a_vals
+            cbf_b.value = b_vals
 
             try:
                 cbf_prob.solve(solver=cp.OSQP, warm_start=True, verbose=False)
@@ -514,19 +642,20 @@ def simulate(mode="nominal"):
         # 模式 2: 多步 MPC-DCBF (参数化, 不重建)
         # ---------------------------------------------------------
         elif mode == "mpc":
+            obs_cache = [get_obstacles_at(t + k * dt) for k in range(N_mpc + 1)]
             X_ref = np.zeros((N_mpc + 1, 4))
             X_ref[0] = x
             for k in range(N_mpc):
                 X_ref[k + 1] = step_dynamics(X_ref[k], U_prev[k])
-            X_track = build_track_reference(x)
+            X_track, U_track = build_second_order_reference(x, obs_cache, U_prev)
 
             M = N_mpc * n_obs
             N_k_val = np.zeros((M, 2))
             N_kp1_val = np.zeros((M, 2))
             c_k_val = np.zeros(M)
             c_kp1_val = np.zeros(M)
-
-            obs_cache = [get_obstacles_at(t + k * dt) for k in range(N_mpc + 1)]
+            vobs_nk_val = np.zeros(M)
+            vobs_nkp1_val = np.zeros(M)
 
             for k in range(N_mpc):
                 obs_k = obs_cache[k]
@@ -546,6 +675,7 @@ def simulate(mode="nominal"):
                         ref_k = X_ref[k, :2]
                     N_k_val[idx] = n_k
                     c_k_val[idx] = dk - n_k @ ref_k - rsafe
+                    vobs_nk_val[idx] = float(n_k @ obs_k[j]["velocity"])
 
                     vec_kp1 = X_ref[k + 1, :2] - obs_kp1[j]["center"]
                     dkp1 = np.linalg.norm(vec_kp1)
@@ -558,27 +688,32 @@ def simulate(mode="nominal"):
                         ref_kp1 = X_ref[k + 1, :2]
                     N_kp1_val[idx] = n_kp1
                     c_kp1_val[idx] = dkp1 - n_kp1 @ ref_kp1 - rsafe
+                    vobs_nkp1_val[idx] = float(n_kp1 @ obs_kp1[j]["velocity"])
 
             mpc_p["x0"].value = x
             mpc_p["X_tr"].value = X_track
+            mpc_p["U_tr"].value = U_track
+            mpc_p["u_prev"].value = U_prev[0] if len(U_prev) > 0 else np.zeros(2)
             mpc_p["N_k"].value = N_k_val
             mpc_p["N_kp1"].value = N_kp1_val
             mpc_p["c_k"].value = c_k_val
             mpc_p["c_kp1"].value = c_kp1_val
+            mpc_p["vobs_nk"].value = vobs_nk_val
+            mpc_p["vobs_nkp1"].value = vobs_nkp1_val
 
             try:
                 mpc_prob.solve(solver=cp.OSQP, warm_start=True, verbose=False,
-                               eps_abs=1e-6, eps_rel=1e-6, max_iter=8000, polish=True)
-                if mpc_prob.status == cp.OPTIMAL and mpc_U.value is not None:
+                               eps_abs=1e-5, eps_rel=1e-5, max_iter=4000, polish=True)
+                if mpc_status_acceptable(mpc_prob.status) and mpc_U.value is not None:
                     u_cmd = np.asarray(mpc_U.value[0]).reshape(2)
                     U_prev[:-1] = mpc_U.value[1:]
                     U_prev[-1] = mpc_U.value[-1]
                 else:
-                    u_cmd = np.clip(-kd * x[2:], -u_max, u_max)
+                    u_cmd = compute_single_step_cbf_safe_control(x, u_des, obs_current)
                     U_prev[:] = 0
                     fails += 1
             except:
-                u_cmd = np.clip(-kd * x[2:], -u_max, u_max)
+                u_cmd = compute_single_step_cbf_safe_control(x, u_des, obs_current)
                 U_prev[:] = 0
                 fails += 1
 
