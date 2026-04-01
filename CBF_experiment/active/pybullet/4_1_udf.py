@@ -211,14 +211,17 @@ def _trilinear_sample_with_gradient(
     For **in-bounds** points the function returns the exact trilinear value and
     its closed-form gradient  ``∂d/∂(x, y, z)``.
 
-    For **out-of-bounds** points (outside ``bbox_min``/``bbox_max``) the query is
-    clamped to the nearest boundary face and then *linearly extrapolated*:
+    For **out-of-bounds** points the nearest surface point is estimated from
+    the boundary value and gradient, then the distance and direction from
+    that estimate to the query point are returned:
 
-        d(p) ≈ d(p_c) + ∇d(p_c) · (p − p_c)
+        s ≈ p_c − d(p_c) · ∇d / |∇d|²     (nearest surface estimate)
+        d(p) = |p − s|
+        ∇d(p) = (p − s) / |p − s|
 
-    This avoids the need to enlarge the voxel grid to cover the full robot
-    workspace.  A true distance field has |∇d| ≈ 1 everywhere, so the linear
-    approximation is tight far from curved surfaces.
+    When the boundary gradient is degenerate (|∇d| ≈ 0, e.g. the mesh
+    surface coincides with the bbox edge), the extrapolated distance falls
+    back to ``|p − p_c|`` with gradient pointing outward from the bbox.
 
     Returns
     -------
@@ -292,7 +295,22 @@ def _trilinear_sample_with_gradient(
     )
 
     if outside:
-        value += float(np.dot(gradient, d_out_vec))
+        grad_norm_sq = float(np.dot(gradient, gradient))
+        if grad_norm_sq > 0.25:
+            surf_est = p_clamped - np.float32(value / grad_norm_sq) * gradient
+            diff = p - surf_est
+            new_dist = float(np.linalg.norm(diff))
+            if new_dist > 1e-12:
+                value = new_dist
+                gradient = (diff / new_dist).astype(np.float32)
+            else:
+                value = 0.0
+        else:
+            value = d_out
+            if d_out > 1e-12:
+                gradient = (d_out_vec / np.float32(d_out)).astype(np.float32)
+            else:
+                gradient = np.zeros(3, dtype=np.float32)
 
     return np.float32(value), gradient
 
