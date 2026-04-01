@@ -537,6 +537,81 @@ class MPCDCBFController:
         self._last_cbf_meta = cbf_meta
         return grad_rows, h_vals
 
+    def _aggregate_cbf_softmin_active_set(
+        self,
+        grad_rows: list,
+        h_vals: list,
+    ) -> tuple[list, list, dict]:
+        """对最危险 top-k 个原始 CBF 做 softmin，得到单个 (h_soft, grad_soft) 供 QP 使用。
+
+        h_soft = -tau * log(sum_i exp(-h_i / tau))（数值稳定：先减 min(h)）
+        grad_soft = sum_i w_i * grad_i，其中 w_i 为 softmax(-h_i/tau) 在选中集合上的归一化权重。
+        """
+        raw_count = int(len(grad_rows))
+        info: dict = {
+            "enabled": False,
+            "raw_cbf_count": raw_count,
+            "qp_cbf_count": raw_count,
+            "tau": float(getattr(self.config, "cbf_softmin_tau", 0.02)),
+            "top_k": int(getattr(self.config, "cbf_softmin_top_k", 3)),
+            "h_soft": None,
+            "active_indices": [],
+            "active_weights": [],
+            "active_h_vals": [],
+            "active_metas": [],
+        }
+        if raw_count == 0 or not h_vals:
+            return [], [], info
+
+        if not bool(getattr(self.config, "cbf_softmin_enabled", False)):
+            info["qp_cbf_count"] = raw_count
+            return grad_rows, h_vals, info
+
+        h = np.asarray(h_vals, dtype=float)
+        grads = [np.asarray(g, dtype=float).reshape(-1) for g in grad_rows]
+        n = int(grads[0].size)
+        if any(g.size != n for g in grads):
+            info["qp_cbf_count"] = raw_count
+            return grad_rows, h_vals, info
+
+        G = np.stack(grads, axis=0)
+        top_k = max(1, int(getattr(self.config, "cbf_softmin_top_k", 3)))
+        tau = max(float(getattr(self.config, "cbf_softmin_tau", 0.02)), 1e-12)
+        m = int(h.shape[0])
+        k = min(top_k, m)
+        order = np.argsort(h, kind="mergesort")
+        sel = order[:k]
+        h_sel = h[sel]
+        G_sel = G[sel, :]
+        h_min = float(np.min(h_sel))
+        exps = np.exp(-(h_sel - h_min) / tau)
+        sum_exps = float(np.sum(exps))
+        if sum_exps <= 0.0 or not np.isfinite(sum_exps):
+            info["qp_cbf_count"] = raw_count
+            return grad_rows, h_vals, info
+        w = exps / sum_exps
+        h_soft = float(h_min - tau * np.log(sum_exps))
+        grad_soft = (w @ G_sel).astype(float, copy=False)
+        metas = []
+        for j, idx in enumerate(sel.tolist()):
+            idx_i = int(idx)
+            meta = dict(self._last_cbf_meta[idx_i]) if idx_i < len(self._last_cbf_meta) else {}
+            meta["raw_cbf_index"] = idx_i
+            meta["softmin_weight"] = float(w[j])
+            meta["h_val_in_softmin"] = float(h_sel[j])
+            metas.append(meta)
+
+        info.update({
+            "enabled": True,
+            "qp_cbf_count": 1,
+            "h_soft": h_soft,
+            "active_indices": [int(x) for x in sel.tolist()],
+            "active_weights": [float(x) for x in w.tolist()],
+            "active_h_vals": [float(x) for x in h_sel.tolist()],
+            "active_metas": metas,
+        })
+        return [grad_soft], [h_soft], info
+
     def _build_second_order_risk_terms(
         self,
         q,
@@ -1253,14 +1328,14 @@ class MPCDCBFController:
         )
         # endregion
 
-        grad_rows, h_vals = self._build_cbf_data(q, dq, obstacles)
-        min_h = float(np.min(h_vals)) if h_vals else 1.0
+        grad_rows_raw, h_vals_raw = self._build_cbf_data(q, dq, obstacles)
+        min_h = float(np.min(h_vals_raw)) if h_vals_raw else 1.0
         worst_cbf = None
-        if h_vals:
-            worst_idx = int(np.argmin(h_vals))
+        if h_vals_raw:
+            worst_idx = int(np.argmin(h_vals_raw))
             worst_cbf = dict(self._last_cbf_meta[worst_idx])
             worst_cbf["cbf_index"] = worst_idx
-        second_order_context = self._collect_second_order_barrier_context(obstacles, h_vals)
+        second_order_context = self._collect_second_order_barrier_context(obstacles, h_vals_raw)
         ref_positions, second_order_info = self._apply_second_order_nominal_preview(
             q=np.asarray(q, dtype=float),
             ee_pos=np.asarray(ee_pos, dtype=float),
@@ -1279,20 +1354,23 @@ class MPCDCBFController:
             active_contexts=second_order_context,
             j_pos=j_pos,
         )
+        qp_grad_rows, qp_h_vals, cbf_softmin_info = self._aggregate_cbf_softmin_active_set(
+            grad_rows_raw, h_vals_raw
+        )
         h_mat, f_vec, a_cbf, b_cbf = self._build_qp(
             ee_pos,
             j_pos,
             j_rot,
             ref_positions,
             ref_rotvecs,
-            grad_rows,
-            h_vals,
+            qp_grad_rows,
+            qp_h_vals,
             active_orientation_weight,
             second_order_risk_terms=second_order_risk_terms,
         )
 
         constraints = []
-        if len(grad_rows) > 0:
+        if len(qp_grad_rows) > 0:
             constraints.append({
                 "type": "ineq",
                 "fun": lambda x: a_cbf @ x + b_cbf,
@@ -1353,9 +1431,9 @@ class MPCDCBFController:
         else:
             x0 = np.tile(u_nom, N)
 
-        zero_constraints = b_cbf if len(grad_rows) > 0 else np.array([], dtype=float)
+        zero_constraints = b_cbf if len(qp_grad_rows) > 0 else np.array([], dtype=float)
         zero_feasible = bool(np.all(zero_constraints >= -1e-9)) if zero_constraints.size else True
-        x0_constraint_margin = float(np.min(a_cbf @ x0 + b_cbf)) if len(grad_rows) > 0 else float("inf")
+        x0_constraint_margin = float(np.min(a_cbf @ x0 + b_cbf)) if len(qp_grad_rows) > 0 else float("inf")
 
         # region agent log
         _append_debug_log(
@@ -1366,7 +1444,10 @@ class MPCDCBFController:
             {
                 "step_count": int(self._step_count),
                 "min_h": float(min_h),
-                "cbf_count": int(len(grad_rows)),
+                "cbf_raw_count": int(len(grad_rows_raw)),
+                "cbf_qp_count": int(len(qp_grad_rows)),
+                "cbf_softmin": dict(cbf_softmin_info),
+                "cbf_count": int(len(qp_grad_rows)),
                 "zero_feasible": bool(zero_feasible),
                 "zero_constraint_margin": float(np.min(zero_constraints)) if zero_constraints.size else float("inf"),
                 "x0_norm": float(np.linalg.norm(x0)),
@@ -1397,7 +1478,7 @@ class MPCDCBFController:
             status = "mpc_fallback"
 
         tightest_constraint = None
-        if len(grad_rows) > 0:
+        if len(qp_grad_rows) > 0:
             solved_margin = a_cbf @ res.x + b_cbf if hasattr(res, "x") else a_cbf @ x0 + b_cbf
             tight_row = int(np.argmin(solved_margin))
             tightest_constraint = {
@@ -1406,7 +1487,14 @@ class MPCDCBFController:
                 "cbf_index": int(tight_row // N),
                 "horizon_step": int(tight_row % N),
             }
-            if tightest_constraint["cbf_index"] < len(self._last_cbf_meta):
+            if cbf_softmin_info.get("enabled"):
+                tightest_constraint["cbf_softmin"] = True
+                tightest_constraint["h_soft"] = cbf_softmin_info.get("h_soft")
+                tightest_constraint["softmin_active_set"] = cbf_softmin_info.get("active_metas", [])
+                dom_idx = int(cbf_softmin_info["active_indices"][0]) if cbf_softmin_info.get("active_indices") else -1
+                if 0 <= dom_idx < len(self._last_cbf_meta):
+                    tightest_constraint["dominant_raw_meta"] = dict(self._last_cbf_meta[dom_idx])
+            elif tightest_constraint["cbf_index"] < len(self._last_cbf_meta):
                 tightest_constraint.update(self._last_cbf_meta[tightest_constraint["cbf_index"]])
 
         # region agent log
@@ -1463,9 +1551,9 @@ class MPCDCBFController:
         # endregion
 
         cbf_motion_summary = []
-        if len(grad_rows) > 0:
-            for cbf_idx, grad in enumerate(grad_rows):
-                current_margin = float(cfg.mpc_dt * np.dot(grad, u_cmd) + cfg.gamma_dcbf * h_vals[cbf_idx])
+        if len(grad_rows_raw) > 0:
+            for cbf_idx, grad in enumerate(grad_rows_raw):
+                current_margin = float(cfg.mpc_dt * np.dot(grad, u_cmd) + cfg.gamma_dcbf * h_vals_raw[cbf_idx])
                 meta = dict(self._last_cbf_meta[cbf_idx]) if cbf_idx < len(self._last_cbf_meta) else {}
                 meta.update({
                     "cbf_index": int(cbf_idx),
@@ -1488,7 +1576,7 @@ class MPCDCBFController:
                 "task_alignment_cos": float(
                     np.dot(ee_cmd_vel, task_dir) / max(np.linalg.norm(ee_cmd_vel), 1e-9)
                 ),
-                "negative_h_count": int(sum(1 for h in h_vals if h < 0.0)),
+                "negative_h_count": int(sum(1 for h in h_vals_raw if h < 0.0)),
                 "active_cbf_count": int(sum(1 for item in cbf_motion_summary if item["current_margin"] <= 1e-6)),
                 "tightest_current_cbfs": cbf_motion_summary[:3],
             },
@@ -1496,9 +1584,9 @@ class MPCDCBFController:
         # endregion
 
         nominal_cbf_summary = []
-        if len(grad_rows) > 0:
-            for cbf_idx, grad in enumerate(grad_rows):
-                nominal_margin = float(cfg.mpc_dt * np.dot(grad, u_nom) + cfg.gamma_dcbf * h_vals[cbf_idx])
+        if len(grad_rows_raw) > 0:
+            for cbf_idx, grad in enumerate(grad_rows_raw):
+                nominal_margin = float(cfg.mpc_dt * np.dot(grad, u_nom) + cfg.gamma_dcbf * h_vals_raw[cbf_idx])
                 nominal_cbf_summary.append({
                     "cbf_index": int(cbf_idx),
                     "grad_dot_u_nom": float(np.dot(grad, u_nom)),
@@ -1542,9 +1630,9 @@ class MPCDCBFController:
         if obj_u is not None:
             ee_obj_vel = j_pos @ obj_u
             obj_cbf_summary = []
-            if len(grad_rows) > 0:
-                for cbf_idx, grad in enumerate(grad_rows):
-                    obj_margin = float(cfg.mpc_dt * np.dot(grad, obj_u) + cfg.gamma_dcbf * h_vals[cbf_idx])
+            if len(grad_rows_raw) > 0:
+                for cbf_idx, grad in enumerate(grad_rows_raw):
+                    obj_margin = float(cfg.mpc_dt * np.dot(grad, obj_u) + cfg.gamma_dcbf * h_vals_raw[cbf_idx])
                     obj_cbf_summary.append({
                         "cbf_index": int(cbf_idx),
                         "grad_dot_u_obj": float(np.dot(grad, obj_u)),
@@ -1620,6 +1708,10 @@ class MPCDCBFController:
             "tracking_error": float(np.linalg.norm(pos_err)),
             "orientation_error": float(np.linalg.norm(rot_err)),
             "progress_step": float(ds_ref),
+            "cbf_raw_count": int(len(grad_rows_raw)),
+            "cbf_qp_count": int(len(qp_grad_rows)),
+            "cbf_softmin": dict(cbf_softmin_info),
+            "tightest_constraint": tightest_constraint,
             "cbf_contacts": [dict(meta) for meta in self._last_cbf_meta],
             **dynamic_info,
             **second_order_info,

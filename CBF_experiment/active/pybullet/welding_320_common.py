@@ -120,6 +120,10 @@ class ExperimentConfig:
     N_mpc: int = 20
     mpc_dt: float = 0.04
     gamma_dcbf: float = 0.5
+    # 多连杆 CBF：对最危险 top-k 做 softmin 聚合成单个 QP 约束（诊断仍用原始逐连杆数据）
+    cbf_softmin_enabled: bool = True
+    cbf_softmin_tau: float = 0.02
+    cbf_softmin_top_k: int = 3
     mpc_tracking_weight: float = 0.5
     mpc_orientation_tracking_weight: float = 0.2
     mpc_terminal_orientation_window: float = 1.0
