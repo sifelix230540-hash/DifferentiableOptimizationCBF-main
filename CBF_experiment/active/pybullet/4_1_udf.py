@@ -684,6 +684,7 @@ def _seg_dist_sq_torch(
     b: "torch.Tensor",  # (1, T, 3)
 ) -> "torch.Tensor":  # (B, T)
     """Squared distance from B points to T segments, fully vectorized."""
+    import torch  # noqa: PLC0415
     ab = b - a                                  # (1, T, 3)
     denom = (ab * ab).sum(-1).clamp(min=1e-30)  # (1, T)
     ap = p - a                                  # (B, T, 3)
@@ -698,6 +699,7 @@ def _pt_tri_dist_sq_torch(
     tris: "torch.Tensor",  # (T, 3, 3)
 ) -> "torch.Tensor":  # (B, T)
     """Unsigned squared distance from B query points to T triangles, no Python loops."""
+    import torch  # noqa: PLC0415
     a = tris[:, 0].unsqueeze(0)   # (1, T, 3)
     b = tris[:, 1].unsqueeze(0)   # (1, T, 3)
     c = tris[:, 2].unsqueeze(0)   # (1, T, 3)
@@ -804,8 +806,7 @@ def _bake_udf_torch(
 
     return udf_flat.reshape(shape)
 
-
-
+def bake_udf_grid(
     triangles: np.ndarray,
     bbox_min: np.ndarray,
     bbox_max: np.ndarray,
@@ -817,7 +818,7 @@ def _bake_udf_torch(
 ) -> np.ndarray:
     """Voxel UDF = min unsigned distance from each voxel center to all triangles.
 
-    Fast path: trimesh BVH (O(N log N)).  Fallback: brute-force NumPy (O(N_tri * N_pts)).
+    Priority: (1) PyTorch CUDA GPU, (2) trimesh BVH (CPU), (3) brute-force NumPy.
 
     Returns ``udf_grid`` only. Callers that also need ``origin`` / ``shape`` should
     derive them separately via :func:`compute_grid_domain`.
@@ -843,7 +844,30 @@ def _bake_udf_torch(
     udf_flat = np.empty(flat_n, dtype=np.float32)
 
     # ------------------------------------------------------------------
-    # Fast path: trimesh BVH (orders of magnitude faster than brute force)
+    # Fast path 1: PyTorch CUDA GPU
+    # ------------------------------------------------------------------
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return _bake_udf_torch(
+                tris,
+                origin,
+                shape,
+                spacing,
+                point_batch_size=max(int(point_batch_size), 50_000),
+                tri_chunk_size=2_000,
+            )
+        print("[bake_udf_grid] torch available but CUDA not found — trying trimesh BVH", flush=True)
+    except ImportError:
+        print("[bake_udf_grid] torch not available — trying trimesh BVH", flush=True)
+    except Exception as exc:
+        print(
+            f"[bake_udf_grid] torch GPU path failed ({exc!r}) — trying trimesh BVH",
+            flush=True,
+        )
+
+    # ------------------------------------------------------------------
+    # Fast path 2: trimesh BVH (CPU, O(N log N))
     # ------------------------------------------------------------------
     _trimesh_ok = False
     try:
@@ -854,7 +878,6 @@ def _bake_udf_torch(
         faces = np.arange(len(verts), dtype=np.int32).reshape(-1, 3)
         mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
 
-        # Use larger batches for trimesh — BVH amortises fixed overhead well.
         bs = max(int(point_batch_size), 50_000)
         n_batches = math.ceil(flat_n / bs)
         print(
