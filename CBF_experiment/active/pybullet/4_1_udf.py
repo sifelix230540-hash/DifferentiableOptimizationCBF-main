@@ -41,7 +41,8 @@ DEFAULT_ARTIFACT_DIR = str(
 # ── 输入 / 输出 ─────────────────────────────────────────────────────────────
 # 已烘焙好的 .npz 路径。设为此值可直接跳过重新烘焙，只做渲染。
 # 若要从 URDF 重新烘焙，请将此项改为 None。
-LOAD_NPZ: str | None = DEFAULT_OUTPUT_NPZ       # ← 直接加载上次结果
+#LOAD_NPZ: str | None = DEFAULT_OUTPUT_NPZ       # ← 直接加载上次结果
+LOAD_NPZ: str | None = None
 
 # 当 LOAD_NPZ = None 时从此 URDF 烘焙（有默认场景时自动填入）。
 URDF_PATH: str | None = DEFAULT_URDF_ARG
@@ -749,17 +750,17 @@ def _igl_signed_distance_pseudonormal(
     pseudo = getattr(igl, "SIGNED_DISTANCE_TYPE_PSEUDONORMAL", None)
     if pseudo is not None:
         try:
-            s, _, _ = igl.signed_distance(
+            s, *_ = igl.signed_distance(
                 p64, v64, fi, sign_type=pseudo, return_normals=False
             )
             return np.asarray(np.ravel(s), dtype=np.float64)
         except TypeError:
             try:
-                s, _, _ = igl.signed_distance(p64, v64, fi, pseudo)
+                s, *_ = igl.signed_distance(p64, v64, fi, pseudo)
                 return np.asarray(np.ravel(s), dtype=np.float64)
             except TypeError:
                 pass
-    s, _, _ = igl.signed_distance(p64, v64, fi, return_normals=False)
+    s, *_ = igl.signed_distance(p64, v64, fi, return_normals=False)
     return np.asarray(np.ravel(s), dtype=np.float64)
 
 
@@ -1916,72 +1917,39 @@ def _udf_to_solid(udf_raw: np.ndarray) -> np.ndarray:
     return np.where(finite, udf_raw, fill)
 
 
-def render_3d_isosurface(
-    field: DistanceField,
-    output_dir: str | Path,
-    *,
-    threshold: float = 0.01,
-    max_side: int = 128,
-    file_name: str = "udf_3d_isosurface.png",
-) -> list[Path]:
-    """Extract UDF isosurface via marching cubes and save a 3-panel matplotlib figure.
+def _sdf_to_solid(sdf_raw: np.ndarray) -> np.ndarray:
+    """Fill NaN/inf cells with a large positive value for marching cubes at level=0."""
+    finite = np.isfinite(sdf_raw)
+    fill = float(np.nanmax(np.abs(sdf_raw[finite]))) + 1.0 if finite.any() else 1.0
+    return np.where(finite, sdf_raw, fill)
 
-    Three orthographic views (perspective, top, front) are written to a single PNG.
-    The grid is downsampled to at most *max_side* voxels per axis before extraction
-    to keep the render tractable.  Requires scikit-image (pip install scikit-image).
-    """
-    try:
-        measure = _import_skimage_measure()
-    except ImportError as exc:
-        print(f"[render_3d_isosurface] skipped: {exc}", file=sys.stderr)
-        return []
 
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
+def _grid_has_data(grid: np.ndarray) -> bool:
+    """True if the grid contains at least one finite value."""
+    return bool(np.any(np.isfinite(grid)))
 
-    udf = _udf_to_solid(np.asarray(field.udf_grid, dtype=np.float64))
-    grid_ds, stride = _downsample_grid(udf, max_side)
-    eff_spacing = float(field.spacing) * stride
 
-    if float(grid_ds.min()) >= threshold:
-        print(
-            f"[render_3d_isosurface] min UDF {grid_ds.min():.4f} >= threshold "
-            f"{threshold:.4f}; isosurface empty — skipping",
-            file=sys.stderr,
-        )
-        return []
-
-    try:
-        verts, faces, _normals, _ = measure.marching_cubes(
-            grid_ds, level=threshold, spacing=(eff_spacing,) * 3
-        )
-    except Exception as exc:
-        print(f"[render_3d_isosurface] marching_cubes failed: {exc}", file=sys.stderr)
-        return []
-
-    origin = np.asarray(field.origin, dtype=np.float64)
-    verts = verts + origin  # index-space → world coordinates
-
+def _render_isosurface_png(
+    verts: np.ndarray,
+    faces: np.ndarray,
+    bbox_min: np.ndarray,
+    bbox_max: np.ndarray,
+    save_path: Path,
+    suptitle: str,
+    facecolor: str = "steelblue",
+) -> Path:
+    """Render 3-panel (perspective / top / side) isosurface PNG via matplotlib."""
     plt = _matplotlib_pyplot_agg()
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # type: ignore[import-not-found]
 
     fig = plt.figure(figsize=(15, 5))
-
     views: list[tuple[int, int]] = [(25, -55), (90, -90), (0, -90)]
     titles = ["Perspective", "Top (XY)", "Side (XZ)"]
     mesh_polys = verts[faces]
-
-    bbox_min = np.asarray(field.bbox_min, dtype=np.float64)
-    bbox_max = np.asarray(field.bbox_max, dtype=np.float64)
-
     for col, ((elev, azim), title) in enumerate(zip(views, titles)):
         ax = fig.add_subplot(1, 3, col + 1, projection="3d")
         poly = Poly3DCollection(
-            mesh_polys,
-            alpha=0.40,
-            facecolor="steelblue",
-            edgecolor="none",
-            linewidth=0,
+            mesh_polys, alpha=0.40, facecolor=facecolor, edgecolor="none", linewidth=0,
         )
         ax.add_collection3d(poly)
         ax.set_xlim(float(bbox_min[0]), float(bbox_max[0]))
@@ -1993,20 +1961,92 @@ def render_3d_isosurface(
         ax.tick_params(labelsize=6)
         ax.view_init(elev=elev, azim=azim)
         ax.set_title(title, fontsize=9)
-
-    n_v, n_f = len(verts), len(faces)
-    fig.suptitle(
-        f"UDF Isosurface  |  threshold={threshold:.4f} m  |  "
-        f"{n_v:,} verts  {n_f:,} faces  (grid stride={stride})",
-        fontsize=10,
-    )
+    fig.suptitle(suptitle, fontsize=10)
     fig.tight_layout()
-
-    p = out / file_name
-    fig.savefig(p, dpi=120, bbox_inches="tight")
+    fig.savefig(save_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
-    print(f"[render_3d_isosurface] saved {p}  ({n_v:,} verts, {n_f:,} faces)")
-    return [p]
+    return save_path
+
+
+def render_3d_isosurface(
+    field: DistanceField,
+    output_dir: str | Path,
+    *,
+    threshold: float = 0.01,
+    max_side: int = 128,
+    file_name: str = "udf_3d_isosurface.png",
+) -> list[Path]:
+    """Extract isosurfaces for UDF, igl SDF, and Open3D SDF via marching cubes.
+
+    UDF uses *threshold* as the level; SDF grids use level=0 (zero-crossing).
+    Each grid that contains valid data produces a separate 3-panel PNG.
+    Requires scikit-image (pip install scikit-image).
+    """
+    try:
+        measure = _import_skimage_measure()
+    except ImportError as exc:
+        print(f"[render_3d_isosurface] skipped: {exc}", file=sys.stderr)
+        return []
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    origin = np.asarray(field.origin, dtype=np.float64)
+    bbox_min = np.asarray(field.bbox_min, dtype=np.float64)
+    bbox_max = np.asarray(field.bbox_max, dtype=np.float64)
+    paths: list[Path] = []
+
+    grids_to_render: list[tuple[str, np.ndarray, float, str, str]] = [
+        ("UDF", field.udf_grid, threshold, file_name, "steelblue"),
+    ]
+    if _grid_has_data(field.igl_sdf_grid):
+        stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+        grids_to_render.append(
+            ("libigl SDF", field.igl_sdf_grid, 0.0, f"{stem}_igl.png", "coral")
+        )
+    if _grid_has_data(field.o3d_sdf_grid):
+        stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+        grids_to_render.append(
+            ("Open3D SDF", field.o3d_sdf_grid, 0.0, f"{stem}_o3d.png", "seagreen")
+        )
+
+    for label, raw_grid, level, fname, color in grids_to_render:
+        raw = np.asarray(raw_grid, dtype=np.float64)
+        is_sdf = level == 0.0 and label != "UDF"
+        solid = _sdf_to_solid(raw) if is_sdf else _udf_to_solid(raw)
+        grid_ds, stride = _downsample_grid(solid, max_side)
+        eff_spacing = float(field.spacing) * stride
+
+        if is_sdf:
+            has_crossing = float(grid_ds.min()) <= level <= float(grid_ds.max())
+        else:
+            has_crossing = float(grid_ds.min()) < level
+        if not has_crossing:
+            print(
+                f"[render_3d_isosurface] {label}: no isosurface at level={level:.4f} — skipping",
+                file=sys.stderr,
+            )
+            continue
+
+        try:
+            verts, faces, _, _ = measure.marching_cubes(
+                grid_ds, level=level, spacing=(eff_spacing,) * 3
+            )
+        except Exception as exc:
+            print(f"[render_3d_isosurface] {label}: marching_cubes failed: {exc}", file=sys.stderr)
+            continue
+
+        verts = verts + origin
+        n_v, n_f = len(verts), len(faces)
+        level_desc = f"level=0 (surface)" if is_sdf else f"threshold={level:.4f} m"
+        suptitle = (
+            f"{label} Isosurface  |  {level_desc}  |  "
+            f"{n_v:,} verts  {n_f:,} faces  (grid stride={stride})"
+        )
+        p = _render_isosurface_png(verts, faces, bbox_min, bbox_max, out / fname, suptitle, color)
+        print(f"[render_3d_isosurface] saved {p}  ({n_v:,} verts, {n_f:,} faces)")
+        paths.append(p)
+
+    return paths
 
 
 def render_3d_plotly(
@@ -2019,8 +2059,9 @@ def render_3d_plotly(
 ) -> list[Path]:
     """Interactive 3-D isosurface rendered as a self-contained HTML file via plotly.
 
+    UDF, libigl SDF, and Open3D SDF isosurfaces are overlaid as separate toggleable
+    traces when the corresponding grids contain valid data.
     Requires both plotly and scikit-image (pip install plotly scikit-image).
-    Gracefully skips with a warning if either dependency is absent.
     """
     try:
         import plotly.graph_objects as go  # type: ignore[import-not-found]
@@ -2041,60 +2082,85 @@ def render_3d_plotly(
 
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-
-    udf = _udf_to_solid(np.asarray(field.udf_grid, dtype=np.float64))
-    grid_ds, stride = _downsample_grid(udf, max_side)
-    eff_spacing = float(field.spacing) * stride
-
-    if float(grid_ds.min()) >= threshold:
-        print(
-            f"[render_3d_plotly] min UDF {grid_ds.min():.4f} >= threshold "
-            f"{threshold:.4f}; isosurface empty — skipping",
-            file=sys.stderr,
-        )
-        return []
-
-    try:
-        verts, faces, _, _ = measure.marching_cubes(
-            grid_ds, level=threshold, spacing=(eff_spacing,) * 3
-        )
-    except Exception as exc:
-        print(f"[render_3d_plotly] marching_cubes failed: {exc}", file=sys.stderr)
-        return []
-
     origin = np.asarray(field.origin, dtype=np.float64)
-    verts = verts + origin
-
     bbox_min = np.asarray(field.bbox_min, dtype=np.float64)
     bbox_max = np.asarray(field.bbox_max, dtype=np.float64)
 
-    mesh = go.Mesh3d(
-        x=verts[:, 0].tolist(),
-        y=verts[:, 1].tolist(),
-        z=verts[:, 2].tolist(),
-        i=faces[:, 0].tolist(),
-        j=faces[:, 1].tolist(),
-        k=faces[:, 2].tolist(),
-        intensity=verts[:, 2].tolist(),
-        colorscale="Blues",
-        showscale=True,
-        colorbar=dict(title="Z (m)", thickness=14),
-        opacity=0.70,
-        flatshading=False,
-        lighting=dict(ambient=0.35, diffuse=0.85, specular=0.25, roughness=0.45),
-        lightposition=dict(x=100, y=200, z=300),
-        name="UDF isosurface",
-    )
+    traces: list = []
+    title_parts: list[str] = []
 
-    fig = go.Figure(data=[mesh])
+    layer_defs: list[tuple[str, np.ndarray, float, bool, str, str, float]] = [
+        ("UDF", field.udf_grid, threshold, False, "Blues", "steelblue", 0.70),
+    ]
+    if _grid_has_data(field.igl_sdf_grid):
+        layer_defs.append(
+            ("libigl SDF", field.igl_sdf_grid, 0.0, True, "Reds", "coral", 0.50)
+        )
+    if _grid_has_data(field.o3d_sdf_grid):
+        layer_defs.append(
+            ("Open3D SDF", field.o3d_sdf_grid, 0.0, True, "Greens", "seagreen", 0.50)
+        )
+
+    for label, raw_grid, level, is_sdf, cscale, color, opa in layer_defs:
+        raw = np.asarray(raw_grid, dtype=np.float64)
+        solid = _sdf_to_solid(raw) if is_sdf else _udf_to_solid(raw)
+        grid_ds, stride = _downsample_grid(solid, max_side)
+        eff_spacing = float(field.spacing) * stride
+
+        if is_sdf:
+            has_crossing = float(grid_ds.min()) <= level <= float(grid_ds.max())
+        else:
+            has_crossing = float(grid_ds.min()) < level
+        if not has_crossing:
+            print(
+                f"[render_3d_plotly] {label}: no isosurface at level={level:.4f} — skipping",
+                file=sys.stderr,
+            )
+            continue
+
+        try:
+            verts, faces, _, _ = measure.marching_cubes(
+                grid_ds, level=level, spacing=(eff_spacing,) * 3
+            )
+        except Exception as exc:
+            print(f"[render_3d_plotly] {label}: marching_cubes failed: {exc}", file=sys.stderr)
+            continue
+
+        verts = verts + origin
+        n_v, n_f = len(verts), len(faces)
+        level_str = "level=0" if is_sdf else f"thr={level:.4f}"
+        title_parts.append(f"{label} {n_v:,}v/{n_f:,}f ({level_str}, s{stride})")
+
+        traces.append(go.Mesh3d(
+            x=verts[:, 0].tolist(),
+            y=verts[:, 1].tolist(),
+            z=verts[:, 2].tolist(),
+            i=faces[:, 0].tolist(),
+            j=faces[:, 1].tolist(),
+            k=faces[:, 2].tolist(),
+            intensity=verts[:, 2].tolist(),
+            colorscale=cscale,
+            showscale=(label == "UDF"),
+            colorbar=dict(title="Z (m)", thickness=14) if label == "UDF" else None,
+            opacity=opa,
+            flatshading=False,
+            lighting=dict(ambient=0.35, diffuse=0.85, specular=0.25, roughness=0.45),
+            lightposition=dict(x=100, y=200, z=300),
+            name=f"{label} isosurface",
+            showlegend=True,
+            visible=True,
+        ))
+
+    if not traces:
+        print("[render_3d_plotly] no valid isosurface produced — skipping", file=sys.stderr)
+        return []
+
+    fig = go.Figure(data=traces)
     fig.update_layout(
         title=dict(
-            text=(
-                f"UDF Isosurface &nbsp;|&nbsp; threshold = {threshold:.4f} m &nbsp;|&nbsp; "
-                f"{len(verts):,} verts · {len(faces):,} faces &nbsp;(stride {stride})"
-            ),
+            text=" &nbsp;|&nbsp; ".join(title_parts) if title_parts else "3-D Isosurface",
             x=0.5,
-            font=dict(size=13),
+            font=dict(size=12),
         ),
         scene=dict(
             xaxis=dict(title="X (m)", range=[float(bbox_min[0]), float(bbox_max[0])]),
@@ -2103,16 +2169,14 @@ def render_3d_plotly(
             aspectmode="data",
             camera=dict(eye=dict(x=1.4, y=1.4, z=0.9)),
         ),
+        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.7)"),
         margin=dict(l=0, r=0, t=55, b=0),
         height=720,
     )
 
     p = out / file_name
     pio.write_html(fig, file=str(p), include_plotlyjs="cdn", full_html=True)
-    print(
-        f"[render_3d_plotly] saved {p}  "
-        f"({len(verts):,} verts, {len(faces):,} faces)"
-    )
+    print(f"[render_3d_plotly] saved {p}  ({len(traces)} layer(s))")
     return [p]
 
 
@@ -2129,11 +2193,11 @@ def render_3d_heatmap_plotly(
     iso_threshold: float = 0.01,
     file_name: str = "udf_3d_heatmap.html",
 ):
-    """Interactive 3-D UDF volume heatmap via plotly go.Volume.
+    """Interactive 3-D volume heatmap for UDF, libigl SDF, and Open3D SDF via plotly.
 
-    Every voxel in the entire scene is rendered as a semi-transparent cloud;
-    color = UDF distance (metres).  An isosurface shell is optionally overlaid
-    for geometric reference.  Requires: pip install plotly scikit-image.
+    Each grid with valid data is rendered as a semi-transparent Volume trace
+    (toggleable via legend).  An isosurface shell overlay is optionally added
+    for each grid.  Requires: pip install plotly scikit-image.
     """
     try:
         import plotly.graph_objects as go
@@ -2149,66 +2213,115 @@ def render_3d_heatmap_plotly(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    # ── 降采样 ────────────────────────────────────────────────────────────────
-    udf_raw = np.asarray(field.udf_grid, dtype=np.float64)
-    grid_ds, stride = _downsample_grid(udf_raw, max_side)
-    eff_sp = float(field.spacing) * stride
-    nx, ny, nz = grid_ds.shape
-
     origin   = np.asarray(field.origin,   dtype=np.float64)
     bbox_min = np.asarray(field.bbox_min, dtype=np.float64)
     bbox_max = np.asarray(field.bbox_max, dtype=np.float64)
 
-    # 体素中心世界坐标
-    cx = origin[0] + (np.arange(nx) + 0.5) * eff_sp
-    cy = origin[1] + (np.arange(ny) + 0.5) * eff_sp
-    cz = origin[2] + (np.arange(nz) + 0.5) * eff_sp
-
-    XX, YY, ZZ = np.meshgrid(cx, cy, cz, indexing="ij")
-    # NaN → 超出显示范围，令其 > dist_max，Volume 会自动裁切
-    val = np.where(np.isfinite(grid_ds), grid_ds, float(dist_max) + 1.0)
-
-    x_flat = XX.ravel().astype(np.float32)
-    y_flat = YY.ravel().astype(np.float32)
-    z_flat = ZZ.ravel().astype(np.float32)
-    v_flat = val.ravel().astype(np.float32)
-    n_pts  = int(x_flat.size)
-
     traces: list = []
+    title_parts: list[str] = []
 
-    # ── 体积渲染 ──────────────────────────────────────────────────────────────
-    traces.append(go.Volume(
-        x=x_flat.tolist(),
-        y=y_flat.tolist(),
-        z=z_flat.tolist(),
-        value=v_flat.tolist(),
-        isomin=float(dist_min),
-        isomax=float(dist_max),
-        opacity=float(opacity),
-        surface_count=int(surface_count),
-        colorscale="Plasma",
-        colorbar=dict(
-            title=dict(text="UDF (m)", side="right"),
-            thickness=16,
-            len=0.75,
-        ),
-        caps=dict(x_show=False, y_show=False, z_show=False),
-        name="UDF volume",
-        showlegend=True,
-    ))
+    volume_defs: list[tuple[str, np.ndarray, bool, str, str]] = [
+        ("UDF", field.udf_grid, False, "Plasma", "UDF (m)"),
+    ]
+    if _grid_has_data(field.igl_sdf_grid):
+        volume_defs.append(
+            ("libigl SDF", field.igl_sdf_grid, True, "RdBu_r", "igl SDF (m)")
+        )
+    if _grid_has_data(field.o3d_sdf_grid):
+        volume_defs.append(
+            ("Open3D SDF", field.o3d_sdf_grid, True, "PRGn_r", "o3d SDF (m)")
+        )
+
+    for vi, (label, raw_grid, is_sdf, cscale, cbar_title) in enumerate(volume_defs):
+        raw = np.asarray(raw_grid, dtype=np.float64)
+        grid_ds, stride = _downsample_grid(raw, max_side)
+        eff_sp = float(field.spacing) * stride
+        nx, ny, nz = grid_ds.shape
+
+        cx = origin[0] + (np.arange(nx) + 0.5) * eff_sp
+        cy = origin[1] + (np.arange(ny) + 0.5) * eff_sp
+        cz = origin[2] + (np.arange(nz) + 0.5) * eff_sp
+        XX, YY, ZZ = np.meshgrid(cx, cy, cz, indexing="ij")
+
+        if is_sdf:
+            finite_vals = raw[np.isfinite(raw)]
+            if finite_vals.size == 0:
+                continue
+            sdf_abs_max = float(np.max(np.abs(finite_vals)))
+            v_min, v_max = -sdf_abs_max, sdf_abs_max
+            fill_val = sdf_abs_max + 1.0
+        else:
+            v_min, v_max = float(dist_min), float(dist_max)
+            fill_val = float(dist_max) + 1.0
+
+        val = np.where(np.isfinite(grid_ds), grid_ds, fill_val)
+        x_flat = XX.ravel().astype(np.float32)
+        y_flat = YY.ravel().astype(np.float32)
+        z_flat = ZZ.ravel().astype(np.float32)
+        v_flat = val.ravel().astype(np.float32)
+
+        traces.append(go.Volume(
+            x=x_flat.tolist(),
+            y=y_flat.tolist(),
+            z=z_flat.tolist(),
+            value=v_flat.tolist(),
+            isomin=v_min,
+            isomax=v_max,
+            opacity=float(opacity),
+            surface_count=int(surface_count),
+            colorscale=cscale,
+            colorbar=dict(
+                title=dict(text=cbar_title, side="right"),
+                thickness=14,
+                len=0.6,
+                x=1.0 + vi * 0.06,
+            ),
+            caps=dict(x_show=False, y_show=False, z_show=False),
+            name=f"{label} volume",
+            showlegend=True,
+            visible=True if vi == 0 else "legendonly",
+        ))
+        title_parts.append(label)
 
     # ── 可选：叠加等值面轮廓 ──────────────────────────────────────────────────
     if overlay_isosurface:
         try:
             measure = _import_skimage_measure()
-            udf_solid = _udf_to_solid(udf_raw)
-            iso_ds, iso_stride = _downsample_grid(udf_solid, max_side)
-            iso_sp = float(field.spacing) * iso_stride
-            if float(iso_ds.min()) < iso_threshold:
-                verts_iso, faces_iso, _, _ = measure.marching_cubes(
-                    iso_ds, level=iso_threshold, spacing=(iso_sp,) * 3
+        except ImportError:
+            measure = None
+
+        if measure is not None:
+            iso_defs: list[tuple[str, np.ndarray, float, bool, str]] = [
+                ("UDF", field.udf_grid, iso_threshold, False, "rgba(200,230,255,0.5)"),
+            ]
+            if _grid_has_data(field.igl_sdf_grid):
+                iso_defs.append(
+                    ("libigl SDF", field.igl_sdf_grid, 0.0, True, "rgba(255,180,180,0.5)")
                 )
+            if _grid_has_data(field.o3d_sdf_grid):
+                iso_defs.append(
+                    ("Open3D SDF", field.o3d_sdf_grid, 0.0, True, "rgba(180,230,180,0.5)")
+                )
+
+            for label, raw_grid, level, is_sdf, color in iso_defs:
+                raw = np.asarray(raw_grid, dtype=np.float64)
+                solid = _sdf_to_solid(raw) if is_sdf else _udf_to_solid(raw)
+                iso_ds, iso_stride = _downsample_grid(solid, max_side)
+                iso_sp = float(field.spacing) * iso_stride
+                if is_sdf:
+                    has_crossing = float(iso_ds.min()) <= level <= float(iso_ds.max())
+                else:
+                    has_crossing = float(iso_ds.min()) < level
+                if not has_crossing:
+                    continue
+                try:
+                    verts_iso, faces_iso, _, _ = measure.marching_cubes(
+                        iso_ds, level=level, spacing=(iso_sp,) * 3
+                    )
+                except Exception:
+                    continue
                 verts_iso = verts_iso + origin
+                level_str = "level=0" if is_sdf else f"d={level:.3f} m"
                 traces.append(go.Mesh3d(
                     x=verts_iso[:, 0].tolist(),
                     y=verts_iso[:, 1].tolist(),
@@ -2216,24 +2329,21 @@ def render_3d_heatmap_plotly(
                     i=faces_iso[:, 0].tolist(),
                     j=faces_iso[:, 1].tolist(),
                     k=faces_iso[:, 2].tolist(),
-                    color="rgba(200,230,255,0.5)",
+                    color=color,
                     opacity=0.45,
                     flatshading=False,
                     lighting=dict(ambient=0.6, diffuse=0.6, specular=0.1),
-                    name=f"Isosurface d={iso_threshold:.3f} m",
+                    name=f"{label} iso ({level_str})",
                     showlegend=True,
                 ))
-        except ImportError:
-            pass
 
     fig = go.Figure(data=traces)
+    n_pts = int(np.prod(np.asarray(field.udf_grid).shape))
     fig.update_layout(
         title=dict(
             text=(
-                f"UDF 3-D Volume Heatmap \u00a0|\u00a0 "
-                f"{n_pts:,} voxels \u00a0·\u00a0 "
-                f"dist [{dist_min:.3f}, {dist_max:.3f}] m \u00a0·\u00a0 "
-                f"stride={stride}"
+                f"3-D Volume Heatmap ({', '.join(title_parts)}) \u00a0|\u00a0 "
+                f"dist [{dist_min:.3f}, {dist_max:.3f}] m"
             ),
             x=0.5, font=dict(size=13),
         ),
@@ -2254,7 +2364,7 @@ def render_3d_heatmap_plotly(
 
     p = out / file_name
     pio.write_html(fig, file=str(p), include_plotlyjs="cdn", full_html=True)
-    print(f"[render_3d_heatmap_plotly] saved {p}  ({n_pts:,} voxels, stride={stride})")
+    print(f"[render_3d_heatmap_plotly] saved {p}  ({len(traces)} trace(s))")
     return [p]
 
 
