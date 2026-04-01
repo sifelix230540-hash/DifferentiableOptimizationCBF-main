@@ -66,6 +66,15 @@ RENDER_3D_THRESHOLD: float = 0.5
 # 越大细节越好，但渲染速度与 HTML 文件体积随之增加。
 RENDER_3D_MAX_SIDE: int = 128
 
+# ── 3-D 体积热图（整个空间颜色 = UDF 距离）──────────────────────────────────
+RENDER_3D_HEATMAP: bool = True       # 生成体积热图 HTML（需要 plotly）
+HEATMAP_MAX_SIDE: int = 64           # 降采样上限（建议 48~80）
+HEATMAP_DIST_MIN: float = 0.0        # 显示距离下限（米）
+HEATMAP_DIST_MAX: float = 0.5        # 显示距离上限（米，超出部分透明）
+HEATMAP_SURFACE_COUNT: int = 20      # 渲染等值面层数
+HEATMAP_OPACITY: float = 0.15        # 体积不透明度（越小越透明）
+HEATMAP_OVERLAY_ISOSURFACE: bool = True  # 叠加等值面轮廓（需要 scikit-image）
+
 # ── 烘焙参数（仅 LOAD_NPZ = None 时生效）────────────────────────────────────
 BAKE_SPACING: float = 0.02               # 体素边长（米）
 BAKE_MARGIN: float = 0.0                 # bbox 外扩边距（米）
@@ -1938,6 +1947,148 @@ def render_3d_plotly(
     return [p]
 
 
+def render_3d_heatmap_plotly(
+    field,
+    output_dir,
+    *,
+    max_side: int = 64,
+    dist_min: float = 0.0,
+    dist_max: float = 0.5,
+    surface_count: int = 20,
+    opacity: float = 0.15,
+    overlay_isosurface: bool = True,
+    iso_threshold: float = 0.01,
+    file_name: str = "udf_3d_heatmap.html",
+):
+    """Interactive 3-D UDF volume heatmap via plotly go.Volume.
+
+    Every voxel in the entire scene is rendered as a semi-transparent cloud;
+    color = UDF distance (metres).  An isosurface shell is optionally overlaid
+    for geometric reference.  Requires: pip install plotly scikit-image.
+    """
+    try:
+        import plotly.graph_objects as go
+        import plotly.io as pio
+    except ImportError:
+        print(
+            "[render_3d_heatmap_plotly] skipped: plotly not installed. "
+            "Install with: pip install plotly",
+            file=sys.stderr,
+        )
+        return []
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    # ── 降采样 ────────────────────────────────────────────────────────────────
+    udf_raw = np.asarray(field.udf_grid, dtype=np.float64)
+    grid_ds, stride = _downsample_grid(udf_raw, max_side)
+    eff_sp = float(field.spacing) * stride
+    nx, ny, nz = grid_ds.shape
+
+    origin   = np.asarray(field.origin,   dtype=np.float64)
+    bbox_min = np.asarray(field.bbox_min, dtype=np.float64)
+    bbox_max = np.asarray(field.bbox_max, dtype=np.float64)
+
+    # 体素中心世界坐标
+    cx = origin[0] + (np.arange(nx) + 0.5) * eff_sp
+    cy = origin[1] + (np.arange(ny) + 0.5) * eff_sp
+    cz = origin[2] + (np.arange(nz) + 0.5) * eff_sp
+
+    XX, YY, ZZ = np.meshgrid(cx, cy, cz, indexing="ij")
+    # NaN → 超出显示范围，令其 > dist_max，Volume 会自动裁切
+    val = np.where(np.isfinite(grid_ds), grid_ds, float(dist_max) + 1.0)
+
+    x_flat = XX.ravel().astype(np.float32)
+    y_flat = YY.ravel().astype(np.float32)
+    z_flat = ZZ.ravel().astype(np.float32)
+    v_flat = val.ravel().astype(np.float32)
+    n_pts  = int(x_flat.size)
+
+    traces: list = []
+
+    # ── 体积渲染 ──────────────────────────────────────────────────────────────
+    traces.append(go.Volume(
+        x=x_flat.tolist(),
+        y=y_flat.tolist(),
+        z=z_flat.tolist(),
+        value=v_flat.tolist(),
+        isomin=float(dist_min),
+        isomax=float(dist_max),
+        opacity=float(opacity),
+        surface_count=int(surface_count),
+        colorscale="Plasma",
+        colorbar=dict(
+            title=dict(text="UDF (m)", side="right"),
+            thickness=16,
+            len=0.75,
+        ),
+        caps=dict(x_show=False, y_show=False, z_show=False),
+        name="UDF volume",
+        showlegend=True,
+    ))
+
+    # ── 可选：叠加等值面轮廓 ──────────────────────────────────────────────────
+    if overlay_isosurface:
+        try:
+            measure = _import_skimage_measure()
+            udf_solid = _udf_to_solid(udf_raw)
+            iso_ds, iso_stride = _downsample_grid(udf_solid, max_side)
+            iso_sp = float(field.spacing) * iso_stride
+            if float(iso_ds.min()) < iso_threshold:
+                verts_iso, faces_iso, _, _ = measure.marching_cubes(
+                    iso_ds, level=iso_threshold, spacing=(iso_sp,) * 3
+                )
+                verts_iso = verts_iso + origin
+                traces.append(go.Mesh3d(
+                    x=verts_iso[:, 0].tolist(),
+                    y=verts_iso[:, 1].tolist(),
+                    z=verts_iso[:, 2].tolist(),
+                    i=faces_iso[:, 0].tolist(),
+                    j=faces_iso[:, 1].tolist(),
+                    k=faces_iso[:, 2].tolist(),
+                    color="rgba(200,230,255,0.5)",
+                    opacity=0.45,
+                    flatshading=False,
+                    lighting=dict(ambient=0.6, diffuse=0.6, specular=0.1),
+                    name=f"Isosurface d={iso_threshold:.3f} m",
+                    showlegend=True,
+                ))
+        except ImportError:
+            pass
+
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        title=dict(
+            text=(
+                f"UDF 3-D Volume Heatmap \u00a0|\u00a0 "
+                f"{n_pts:,} voxels \u00a0·\u00a0 "
+                f"dist [{dist_min:.3f}, {dist_max:.3f}] m \u00a0·\u00a0 "
+                f"stride={stride}"
+            ),
+            x=0.5, font=dict(size=13),
+        ),
+        scene=dict(
+            xaxis=dict(title="X (m)", range=[float(bbox_min[0]), float(bbox_max[0])]),
+            yaxis=dict(title="Y (m)", range=[float(bbox_min[1]), float(bbox_max[1])]),
+            zaxis=dict(title="Z (m)", range=[float(bbox_min[2]), float(bbox_max[2])]),
+            aspectmode="data",
+            camera=dict(eye=dict(x=1.5, y=1.2, z=0.8)),
+            bgcolor="rgb(10,10,20)",
+        ),
+        paper_bgcolor="rgb(20,20,30)",
+        font=dict(color="white"),
+        legend=dict(x=0.01, y=0.99, bgcolor="rgba(0,0,0,0.4)", font=dict(color="white")),
+        margin=dict(l=0, r=0, t=55, b=0),
+        height=760,
+    )
+
+    p = out / file_name
+    pio.write_html(fig, file=str(p), include_plotlyjs="cdn", full_html=True)
+    print(f"[render_3d_heatmap_plotly] saved {p}  ({n_pts:,} voxels, stride={stride})")
+    return [p]
+
+
 def _default_artifact_dir(
     args: argparse.Namespace, output_path: Path | None
 ) -> Path:
@@ -2086,6 +2237,43 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
             "(default: %(default)s).  Increase for higher fidelity at the cost of speed."
         ),
     )
+    parser.add_argument(
+        "--render-3d-heatmap",
+        action="store_true",
+        default=RENDER_3D_HEATMAP,
+        dest="render_3d_heatmap",
+        help="Write interactive 3-D volume heatmap HTML (requires plotly)",
+    )
+    parser.add_argument(
+        "--no-render-3d-heatmap",
+        action="store_false",
+        dest="render_3d_heatmap",
+        help="Disable 3-D heatmap (overrides RENDER_3D_HEATMAP=True in config block)",
+    )
+    parser.add_argument(
+        "--heatmap-max-side",
+        type=int,
+        default=HEATMAP_MAX_SIDE,
+        dest="heatmap_max_side",
+        metavar="N",
+        help="Heatmap grid downsample limit per axis (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--heatmap-dist-max",
+        type=float,
+        default=HEATMAP_DIST_MAX,
+        dest="heatmap_dist_max",
+        metavar="D",
+        help="Max UDF distance shown in heatmap in metres (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--heatmap-opacity",
+        type=float,
+        default=HEATMAP_OPACITY,
+        dest="heatmap_opacity",
+        metavar="A",
+        help="Volume opacity 0-1 (default: %(default)s)",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
@@ -2149,9 +2337,10 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     assert field is not None
 
-    do_render_3d = bool(getattr(args, "render_3d", False))
+    do_render_3d     = bool(getattr(args, "render_3d", False))
+    do_render_heatmap = bool(getattr(args, "render_3d_heatmap", False))
 
-    if do_render or do_render_3d:
+    if do_render or do_render_3d or do_render_heatmap:
         plot_dir = (
             Path(args.artifact_dir)
             if args.artifact_dir
@@ -2169,6 +2358,19 @@ def main(argv: Iterable[str] | None = None) -> int:
             ms = int(getattr(args, "render_3d_max_side", 128))
             render_3d_isosurface(field, plot_dir, threshold=thr, max_side=ms)
             render_3d_plotly(field, plot_dir, threshold=thr, max_side=ms)
+
+        if getattr(args, "render_3d_heatmap", False):
+            render_3d_heatmap_plotly(
+                field,
+                plot_dir,
+                max_side=int(getattr(args, "heatmap_max_side", HEATMAP_MAX_SIDE)),
+                dist_min=float(HEATMAP_DIST_MIN),
+                dist_max=float(getattr(args, "heatmap_dist_max", HEATMAP_DIST_MAX)),
+                surface_count=int(HEATMAP_SURFACE_COUNT),
+                opacity=float(getattr(args, "heatmap_opacity", HEATMAP_OPACITY)),
+                overlay_isosurface=bool(HEATMAP_OVERLAY_ISOSURFACE),
+                iso_threshold=float(RENDER_3D_THRESHOLD),
+            )
 
     return 0
 
