@@ -34,6 +34,47 @@ DEFAULT_ARTIFACT_DIR = str(
     DEFAULT_SCENE_URDF_PATH.parent / (DEFAULT_SCENE_URDF_PATH.stem + "_udf_plots")
 )
 
+# =============================================================================
+#  ★  USER CONFIG — 修改这里即可；CLI 参数仍可覆盖任意设置  ★
+# =============================================================================
+
+# ── 输入 / 输出 ─────────────────────────────────────────────────────────────
+# 已烘焙好的 .npz 路径。设为此值可直接跳过重新烘焙，只做渲染。
+# 若要从 URDF 重新烘焙，请将此项改为 None。
+LOAD_NPZ: str | None = DEFAULT_OUTPUT_NPZ       # ← 直接加载上次结果
+
+# 当 LOAD_NPZ = None 时从此 URDF 烘焙（有默认场景时自动填入）。
+URDF_PATH: str | None = DEFAULT_URDF_ARG
+
+# 烘焙结果的保存路径。设为 None 则不保存。
+OUTPUT_NPZ: str | None = DEFAULT_OUTPUT_NPZ
+
+# 所有渲染产物（PNG / HTML）的输出目录。
+ARTIFACT_DIR: str | None = DEFAULT_ARTIFACT_DIR
+
+# ── 2-D 渲染（切片热图、散点对比、符号诊断）──────────────────────────────
+RENDER_2D: bool = False          # True = 同时生成 2-D PNG 套件
+
+# ── 3-D 渲染（等值面 PNG + 交互式 HTML）─────────────────────────────────────
+RENDER_3D: bool = True           # ← 默认开启，直接从 LOAD_NPZ 渲染
+
+# 等值面提取的 UDF 阈值（单位：米）。
+# 越小越贴近网格面；越大等于给模型加一层"膨胀壳"。
+RENDER_3D_THRESHOLD: float = 0.5
+
+# 运行 marching cubes 前将 UDF 网格最长轴降采样到该值以内。
+# 越大细节越好，但渲染速度与 HTML 文件体积随之增加。
+RENDER_3D_MAX_SIDE: int = 128
+
+# ── 烘焙参数（仅 LOAD_NPZ = None 时生效）────────────────────────────────────
+BAKE_SPACING: float = 0.02               # 体素边长（米）
+BAKE_MARGIN: float = 0.0                 # bbox 外扩边距（米）
+BAKE_UDF_ONLY: bool = False              # True = 跳过 libigl / Open3D SDF
+BAKE_MAX_MEMORY_MB: float = DEFAULT_MAX_MEMORY_MB
+BAKE_MAX_POINTS_PER_BATCH: int = DEFAULT_MAX_POINTS_PER_BATCH
+
+# =============================================================================
+
 
 class DistanceFieldQueryOutOfBoundsError(ValueError):
     """Raised when ``clip=False`` and the query point lies outside the valid domain."""
@@ -1661,6 +1702,242 @@ def render_sign_diagnostics(
     return paths
 
 
+# ---------------------------------------------------------------------------
+# 3-D visualization helpers
+# ---------------------------------------------------------------------------
+
+
+def _import_skimage_measure():
+    """Lazy import of skimage.measure (marching cubes).  pip install scikit-image."""
+    try:
+        from skimage import measure  # type: ignore[import-not-found]
+
+        return measure
+    except ImportError as exc:
+        raise ImportError(
+            "3-D visualization requires scikit-image.  "
+            "Install with: pip install scikit-image"
+        ) from exc
+
+
+def _downsample_grid(grid: np.ndarray, max_side: int = 128) -> tuple[np.ndarray, int]:
+    """Uniformly subsample a 3-D grid so its longest axis <= max_side.
+
+    Returns (downsampled_grid, stride).
+    """
+    stride = max(1, int(math.ceil(max(grid.shape) / max_side)))
+    if stride == 1:
+        return grid, 1
+    return grid[::stride, ::stride, ::stride], stride
+
+
+def _udf_to_solid(udf_raw: np.ndarray) -> np.ndarray:
+    """Fill NaN/inf cells with the finite maximum so marching cubes stays clean."""
+    finite = np.isfinite(udf_raw)
+    fill = float(np.nanmax(udf_raw[finite])) if finite.any() else 1.0
+    return np.where(finite, udf_raw, fill)
+
+
+def render_3d_isosurface(
+    field: DistanceField,
+    output_dir: str | Path,
+    *,
+    threshold: float = 0.01,
+    max_side: int = 128,
+    file_name: str = "udf_3d_isosurface.png",
+) -> list[Path]:
+    """Extract UDF isosurface via marching cubes and save a 3-panel matplotlib figure.
+
+    Three orthographic views (perspective, top, front) are written to a single PNG.
+    The grid is downsampled to at most *max_side* voxels per axis before extraction
+    to keep the render tractable.  Requires scikit-image (pip install scikit-image).
+    """
+    try:
+        measure = _import_skimage_measure()
+    except ImportError as exc:
+        print(f"[render_3d_isosurface] skipped: {exc}", file=sys.stderr)
+        return []
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    udf = _udf_to_solid(np.asarray(field.udf_grid, dtype=np.float64))
+    grid_ds, stride = _downsample_grid(udf, max_side)
+    eff_spacing = float(field.spacing) * stride
+
+    if float(grid_ds.min()) >= threshold:
+        print(
+            f"[render_3d_isosurface] min UDF {grid_ds.min():.4f} >= threshold "
+            f"{threshold:.4f}; isosurface empty — skipping",
+            file=sys.stderr,
+        )
+        return []
+
+    try:
+        verts, faces, _normals, _ = measure.marching_cubes(
+            grid_ds, level=threshold, spacing=(eff_spacing,) * 3
+        )
+    except Exception as exc:
+        print(f"[render_3d_isosurface] marching_cubes failed: {exc}", file=sys.stderr)
+        return []
+
+    origin = np.asarray(field.origin, dtype=np.float64)
+    verts = verts + origin  # index-space → world coordinates
+
+    plt = _matplotlib_pyplot_agg()
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # type: ignore[import-not-found]
+
+    fig = plt.figure(figsize=(15, 5))
+
+    views: list[tuple[int, int]] = [(25, -55), (90, -90), (0, -90)]
+    titles = ["Perspective", "Top (XY)", "Side (XZ)"]
+    mesh_polys = verts[faces]
+
+    bbox_min = np.asarray(field.bbox_min, dtype=np.float64)
+    bbox_max = np.asarray(field.bbox_max, dtype=np.float64)
+
+    for col, ((elev, azim), title) in enumerate(zip(views, titles)):
+        ax = fig.add_subplot(1, 3, col + 1, projection="3d")
+        poly = Poly3DCollection(
+            mesh_polys,
+            alpha=0.40,
+            facecolor="steelblue",
+            edgecolor="none",
+            linewidth=0,
+        )
+        ax.add_collection3d(poly)
+        ax.set_xlim(float(bbox_min[0]), float(bbox_max[0]))
+        ax.set_ylim(float(bbox_min[1]), float(bbox_max[1]))
+        ax.set_zlim(float(bbox_min[2]), float(bbox_max[2]))
+        ax.set_xlabel("X (m)", fontsize=7)
+        ax.set_ylabel("Y (m)", fontsize=7)
+        ax.set_zlabel("Z (m)", fontsize=7)
+        ax.tick_params(labelsize=6)
+        ax.view_init(elev=elev, azim=azim)
+        ax.set_title(title, fontsize=9)
+
+    n_v, n_f = len(verts), len(faces)
+    fig.suptitle(
+        f"UDF Isosurface  |  threshold={threshold:.4f} m  |  "
+        f"{n_v:,} verts  {n_f:,} faces  (grid stride={stride})",
+        fontsize=10,
+    )
+    fig.tight_layout()
+
+    p = out / file_name
+    fig.savefig(p, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[render_3d_isosurface] saved {p}  ({n_v:,} verts, {n_f:,} faces)")
+    return [p]
+
+
+def render_3d_plotly(
+    field: DistanceField,
+    output_dir: str | Path,
+    *,
+    threshold: float = 0.01,
+    max_side: int = 96,
+    file_name: str = "udf_3d_interactive.html",
+) -> list[Path]:
+    """Interactive 3-D isosurface rendered as a self-contained HTML file via plotly.
+
+    Requires both plotly and scikit-image (pip install plotly scikit-image).
+    Gracefully skips with a warning if either dependency is absent.
+    """
+    try:
+        import plotly.graph_objects as go  # type: ignore[import-not-found]
+        import plotly.io as pio  # type: ignore[import-not-found]
+    except ImportError:
+        print(
+            "[render_3d_plotly] skipped: plotly not installed.  "
+            "Install with: pip install plotly",
+            file=sys.stderr,
+        )
+        return []
+
+    try:
+        measure = _import_skimage_measure()
+    except ImportError as exc:
+        print(f"[render_3d_plotly] skipped: {exc}", file=sys.stderr)
+        return []
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    udf = _udf_to_solid(np.asarray(field.udf_grid, dtype=np.float64))
+    grid_ds, stride = _downsample_grid(udf, max_side)
+    eff_spacing = float(field.spacing) * stride
+
+    if float(grid_ds.min()) >= threshold:
+        print(
+            f"[render_3d_plotly] min UDF {grid_ds.min():.4f} >= threshold "
+            f"{threshold:.4f}; isosurface empty — skipping",
+            file=sys.stderr,
+        )
+        return []
+
+    try:
+        verts, faces, _, _ = measure.marching_cubes(
+            grid_ds, level=threshold, spacing=(eff_spacing,) * 3
+        )
+    except Exception as exc:
+        print(f"[render_3d_plotly] marching_cubes failed: {exc}", file=sys.stderr)
+        return []
+
+    origin = np.asarray(field.origin, dtype=np.float64)
+    verts = verts + origin
+
+    bbox_min = np.asarray(field.bbox_min, dtype=np.float64)
+    bbox_max = np.asarray(field.bbox_max, dtype=np.float64)
+
+    mesh = go.Mesh3d(
+        x=verts[:, 0].tolist(),
+        y=verts[:, 1].tolist(),
+        z=verts[:, 2].tolist(),
+        i=faces[:, 0].tolist(),
+        j=faces[:, 1].tolist(),
+        k=faces[:, 2].tolist(),
+        intensity=verts[:, 2].tolist(),
+        colorscale="Blues",
+        showscale=True,
+        colorbar=dict(title="Z (m)", thickness=14),
+        opacity=0.70,
+        flatshading=False,
+        lighting=dict(ambient=0.35, diffuse=0.85, specular=0.25, roughness=0.45),
+        lightposition=dict(x=100, y=200, z=300),
+        name="UDF isosurface",
+    )
+
+    fig = go.Figure(data=[mesh])
+    fig.update_layout(
+        title=dict(
+            text=(
+                f"UDF Isosurface &nbsp;|&nbsp; threshold = {threshold:.4f} m &nbsp;|&nbsp; "
+                f"{len(verts):,} verts · {len(faces):,} faces &nbsp;(stride {stride})"
+            ),
+            x=0.5,
+            font=dict(size=13),
+        ),
+        scene=dict(
+            xaxis=dict(title="X (m)", range=[float(bbox_min[0]), float(bbox_max[0])]),
+            yaxis=dict(title="Y (m)", range=[float(bbox_min[1]), float(bbox_max[1])]),
+            zaxis=dict(title="Z (m)", range=[float(bbox_min[2]), float(bbox_max[2])]),
+            aspectmode="data",
+            camera=dict(eye=dict(x=1.4, y=1.4, z=0.9)),
+        ),
+        margin=dict(l=0, r=0, t=55, b=0),
+        height=720,
+    )
+
+    p = out / file_name
+    pio.write_html(fig, file=str(p), include_plotlyjs="cdn", full_html=True)
+    print(
+        f"[render_3d_plotly] saved {p}  "
+        f"({len(verts):,} verts, {len(faces):,} faces)"
+    )
+    return [p]
+
+
 def _default_artifact_dir(
     args: argparse.Namespace, output_path: Path | None
 ) -> Path:
@@ -1682,11 +1959,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--urdf",
         type=str,
-        default=DEFAULT_URDF_ARG,
-        help=(
-            "Path to URDF file "
-            f"(default: {DEFAULT_URDF_ARG if DEFAULT_URDF_ARG is not None else 'none'})"
-        ),
+        default=URDF_PATH,
+        help="Path to URDF file (default: %(default)s)",
     )
     parser.add_argument(
         "--inspect-only",
@@ -1696,71 +1970,72 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--udf-only",
         action="store_true",
+        default=BAKE_UDF_ONLY,
         help="Bake unsigned distance field (UDF) only and write compressed .npz",
+    )
+    parser.add_argument(
+        "--no-udf-only",
+        action="store_false",
+        dest="udf_only",
+        help="Override BAKE_UDF_ONLY=True from the config block",
     )
     parser.add_argument(
         "--spacing",
         type=float,
-        default=0.02,
-        help="Voxel spacing for UDF bake",
+        default=BAKE_SPACING,
+        help="Voxel spacing for UDF bake (default: %(default)s m)",
     )
     parser.add_argument(
         "--margin",
         type=float,
-        default=0.0,
-        help="Extra padding around assembly bbox for the grid domain",
+        default=BAKE_MARGIN,
+        help="Extra padding around assembly bbox for the grid domain (default: %(default)s m)",
     )
     parser.add_argument(
         "--max-memory-mb",
         type=float,
-        default=DEFAULT_MAX_MEMORY_MB,
+        default=BAKE_MAX_MEMORY_MB,
         help="Abort if estimated float32 grid storage (3 grids) exceeds this budget",
     )
     parser.add_argument(
         "--max-points-per-batch",
         type=int,
-        default=DEFAULT_MAX_POINTS_PER_BATCH,
+        default=BAKE_MAX_POINTS_PER_BATCH,
         help="Maximum voxel-center queries processed per UDF batch",
     )
     parser.add_argument(
         "--output",
         type=str,
-        default=DEFAULT_OUTPUT_NPZ,
-        help=(
-            "Output .npz path when baking from URDF "
-            f"(default: {DEFAULT_OUTPUT_NPZ})"
-        ),
+        default=OUTPUT_NPZ,
+        help="Output .npz path when baking from URDF (default: %(default)s)",
     )
     parser.add_argument(
         "--load",
         type=str,
-        default=None,
+        default=LOAD_NPZ,
         dest="load_path",
         metavar="NPZ",
-        help="Load a baked distance field .npz instead of baking from --urdf",
+        help="Load a baked distance field .npz instead of baking from --urdf (default: %(default)s)",
     )
     parser.add_argument(
         "--render",
         action="store_true",
-        default=True,
-        help="Write slice / sample / sign diagnostic PNGs under --artifact-dir (default: enabled)",
+        default=RENDER_2D,
+        help="Write slice / sample / sign diagnostic PNGs under --artifact-dir",
     )
     parser.add_argument(
         "--no-render",
         action="store_false",
         dest="render",
-        help="Disable PNG rendering (overrides default --render)",
+        help="Disable 2-D PNG rendering (overrides RENDER_2D=True in config block)",
     )
     parser.add_argument(
         "--artifact-dir",
         type=str,
-        default=DEFAULT_ARTIFACT_DIR,
+        default=ARTIFACT_DIR,
         dest="artifact_dir",
         metavar="DIR",
-        help=(
-            "Output directory for --render "
-            f"(default: {DEFAULT_ARTIFACT_DIR})"
-        ),
+        help="Output directory for rendered artefacts (default: %(default)s)",
     )
     parser.add_argument(
         "--render-plots-npz",
@@ -1775,6 +2050,41 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         default=None,
         metavar="DIR",
         help="Legacy alias for --artifact-dir when using --render-plots-npz",
+    )
+    parser.add_argument(
+        "--render-3d",
+        action="store_true",
+        default=RENDER_3D,
+        dest="render_3d",
+        help=(
+            "Write a 3-view isosurface PNG and (if plotly is installed) an interactive "
+            "HTML file.  Requires scikit-image (pip install scikit-image)."
+        ),
+    )
+    parser.add_argument(
+        "--no-render-3d",
+        action="store_false",
+        dest="render_3d",
+        help="Disable 3-D rendering (overrides RENDER_3D=True in config block)",
+    )
+    parser.add_argument(
+        "--render-3d-threshold",
+        type=float,
+        default=RENDER_3D_THRESHOLD,
+        dest="render_3d_threshold",
+        metavar="DIST",
+        help="UDF distance threshold for isosurface extraction in metres (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--render-3d-max-side",
+        type=int,
+        default=RENDER_3D_MAX_SIDE,
+        dest="render_3d_max_side",
+        metavar="N",
+        help=(
+            "Downsample UDF grid so longest axis <= N voxels before marching cubes "
+            "(default: %(default)s).  Increase for higher fidelity at the cost of speed."
+        ),
     )
     return parser.parse_args(list(argv) if argv is not None else None)
 
@@ -1839,16 +2149,26 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     assert field is not None
 
-    if do_render:
+    do_render_3d = bool(getattr(args, "render_3d", False))
+
+    if do_render or do_render_3d:
         plot_dir = (
             Path(args.artifact_dir)
             if args.artifact_dir
             else _default_artifact_dir(args, output_path)
         )
         plot_dir.mkdir(parents=True, exist_ok=True)
-        render_slice_comparison(field, plot_dir)
-        render_sample_point_comparison(field, plot_dir)
-        render_sign_diagnostics(field, plot_dir)
+
+        if do_render:
+            render_slice_comparison(field, plot_dir)
+            render_sample_point_comparison(field, plot_dir)
+            render_sign_diagnostics(field, plot_dir)
+
+        if do_render_3d:
+            thr = float(getattr(args, "render_3d_threshold", 0.01))
+            ms = int(getattr(args, "render_3d_max_side", 128))
+            render_3d_isosurface(field, plot_dir, threshold=thr, max_side=ms)
+            render_3d_plotly(field, plot_dir, threshold=thr, max_side=ms)
 
     return 0
 
