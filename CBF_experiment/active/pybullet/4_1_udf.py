@@ -53,7 +53,7 @@ OUTPUT_NPZ: str | None = DEFAULT_OUTPUT_NPZ
 ARTIFACT_DIR: str | None = DEFAULT_ARTIFACT_DIR
 
 # ── 2-D 渲染（切片热图、散点对比、符号诊断）──────────────────────────────
-RENDER_2D: bool = False          # True = 同时生成 2-D PNG 套件
+RENDER_2D: bool = True          # True = 同时生成 2-D PNG 套件
 
 # ── 3-D 渲染（等值面 PNG + 交互式 HTML）─────────────────────────────────────
 RENDER_3D: bool = True           # ← 默认开启，直接从 LOAD_NPZ 渲染
@@ -70,7 +70,7 @@ RENDER_3D_MAX_SIDE: int = 128
 RENDER_3D_HEATMAP: bool = True       # 生成体积热图 HTML（需要 plotly）
 HEATMAP_MAX_SIDE: int = 64           # 降采样上限（建议 48~80）
 HEATMAP_DIST_MIN: float = 0.0        # 显示距离下限（米）
-HEATMAP_DIST_MAX: float = 0.5        # 显示距离上限（米，超出部分透明）
+HEATMAP_DIST_MAX: float = 1.3        # 显示距离上限（米，超出部分透明）
 HEATMAP_SURFACE_COUNT: int = 20      # 渲染等值面层数
 HEATMAP_OPACITY: float = 0.15        # 体积不透明度（越小越透明）
 HEATMAP_OVERLAY_ISOSURFACE: bool = True  # 叠加等值面轮廓（需要 scikit-image）
@@ -196,6 +196,106 @@ def _trilinear_sample(
     return np.float32(c0 * (1.0 - tx) + c1 * tx)
 
 
+def _trilinear_sample_with_gradient(
+    grid: np.ndarray,
+    pos: np.ndarray,
+    origin: np.ndarray,
+    spacing: float,
+    *,
+    bbox_min: np.ndarray,
+    bbox_max: np.ndarray,
+) -> tuple[np.float32, np.ndarray]:
+    """Trilinear interpolation with analytical spatial gradient.
+
+    For **in-bounds** points the function returns the exact trilinear value and
+    its closed-form gradient  ``∂d/∂(x, y, z)``.
+
+    For **out-of-bounds** points (outside ``bbox_min``/``bbox_max``) the query is
+    clamped to the nearest boundary face and then *linearly extrapolated*:
+
+        d(p) ≈ d(p_c) + ∇d(p_c) · (p − p_c)
+
+    This avoids the need to enlarge the voxel grid to cover the full robot
+    workspace.  A true distance field has |∇d| ≈ 1 everywhere, so the linear
+    approximation is tight far from curved surfaces.
+
+    Returns
+    -------
+    value : np.float32
+        Scalar distance (or its extrapolation).
+    gradient : np.ndarray, shape (3,), dtype float32
+        Spatial gradient  ∂d/∂x, ∂d/∂y, ∂d/∂z  in world coordinates.
+    """
+    p = np.asarray(pos, dtype=np.float32).reshape(3).copy()
+    bmin = np.asarray(bbox_min, dtype=np.float32).reshape(3)
+    bmax = np.asarray(bbox_max, dtype=np.float32).reshape(3)
+    org = np.asarray(origin, dtype=np.float32).reshape(3)
+    s = float(spacing)
+
+    p_clamped = np.clip(p, bmin, bmax)
+    d_out_vec = p - p_clamped
+    d_out = float(np.linalg.norm(d_out_vec))
+    outside = d_out > 0.0
+
+    coord = (p_clamped - org) / s - np.float32(0.5)
+
+    nx, ny, nz = grid.shape
+    ix0, ix1, tx = _axis_i0_i1_t(float(coord[0]), nx, clip_indices=True)
+    iy0, iy1, ty = _axis_i0_i1_t(float(coord[1]), ny, clip_indices=True)
+    iz0, iz1, tz = _axis_i0_i1_t(float(coord[2]), nz, clip_indices=True)
+
+    c000 = float(grid[ix0, iy0, iz0])
+    c001 = float(grid[ix0, iy0, iz1])
+    c010 = float(grid[ix0, iy1, iz0])
+    c011 = float(grid[ix0, iy1, iz1])
+    c100 = float(grid[ix1, iy0, iz0])
+    c101 = float(grid[ix1, iy0, iz1])
+    c110 = float(grid[ix1, iy1, iz0])
+    c111 = float(grid[ix1, iy1, iz1])
+
+    if any(math.isnan(c) for c in (c000, c001, c010, c011, c100, c101, c110, c111)):
+        return np.float32(np.nan), np.full(3, np.nan, dtype=np.float32)
+
+    # --- trilinear value ---
+    c00 = c000 * (1.0 - tz) + c001 * tz
+    c01 = c010 * (1.0 - tz) + c011 * tz
+    c10 = c100 * (1.0 - tz) + c101 * tz
+    c11 = c110 * (1.0 - tz) + c111 * tz
+    c0 = c00 * (1.0 - ty) + c01 * ty
+    c1 = c10 * (1.0 - ty) + c11 * ty
+    value = float(c0 * (1.0 - tx) + c1 * tx)
+
+    # --- analytical gradient in grid-index coords ---
+    dfdtx = (
+        (c100 - c000) * (1.0 - ty) * (1.0 - tz)
+        + (c101 - c001) * (1.0 - ty) * tz
+        + (c110 - c010) * ty * (1.0 - tz)
+        + (c111 - c011) * ty * tz
+    )
+    dfdty = (
+        (c010 - c000) * (1.0 - tx) * (1.0 - tz)
+        + (c011 - c001) * (1.0 - tx) * tz
+        + (c110 - c100) * tx * (1.0 - tz)
+        + (c111 - c101) * tx * tz
+    )
+    dfdtz = (
+        (c001 - c000) * (1.0 - tx) * (1.0 - ty)
+        + (c011 - c010) * (1.0 - tx) * ty
+        + (c101 - c100) * tx * (1.0 - ty)
+        + (c111 - c110) * tx * ty
+    )
+
+    inv_s = 1.0 / s
+    gradient = np.array(
+        [dfdtx * inv_s, dfdty * inv_s, dfdtz * inv_s], dtype=np.float32
+    )
+
+    if outside:
+        value += float(np.dot(gradient, d_out_vec))
+
+    return np.float32(value), gradient
+
+
 @dataclass
 class DistanceField:
     origin: np.ndarray
@@ -247,6 +347,75 @@ class DistanceField:
             for i in range(pts.shape[0]):
                 out[i] = self.query_single(pts[i], kind=kind, clip=clip)
             return out
+        raise ValueError(
+            f"points must have shape (3,) or (N, 3); got shape {pts.shape}"
+        )
+
+    # ----- distance + gradient (for CBF-QP) -----
+
+    def query_single_with_gradient(
+        self,
+        position: np.ndarray,
+        kind: str = "udf",
+    ) -> tuple[np.float32, np.ndarray]:
+        """Distance and spatial gradient at one point.
+
+        Always succeeds: out-of-bounds points are handled by linear
+        extrapolation from the nearest grid boundary (no exception, no need
+        to enlarge the bounding box).
+
+        Returns
+        -------
+        distance : np.float32
+            Scalar distance (extrapolated if outside domain).
+        gradient : np.ndarray, shape (3,), dtype float32
+            ∂d/∂x, ∂d/∂y, ∂d/∂z.  ``-gradient / |gradient|`` points
+            toward the nearest obstacle surface (the repulsion direction
+            for CBF-QP).
+        """
+        grid = _grid_for_kind(self, kind)
+        pos = np.asarray(position, dtype=np.float32).reshape(3)
+        return _trilinear_sample_with_gradient(
+            grid,
+            pos,
+            self.origin,
+            float(self.spacing),
+            bbox_min=self.bbox_min,
+            bbox_max=self.bbox_max,
+        )
+
+    def query_with_gradient(
+        self,
+        points: np.ndarray,
+        kind: str = "udf",
+    ) -> tuple[np.floating | np.ndarray, np.ndarray]:
+        """Distance and gradient for one or many points.
+
+        Parameters
+        ----------
+        points : (3,) or (N, 3) array
+        kind : ``'udf'``, ``'igl_sdf'``, or ``'o3d_sdf'``
+
+        Returns
+        -------
+        distances : float32 scalar or (N,) float32
+        gradients : (3,) or (N, 3) float32
+            Spatial gradient.  For CBF-QP the repulsion direction is
+            ``-gradients / |gradients|`` and the nearest obstacle point
+            estimate is ``points - distances * gradients / |gradients|``.
+        """
+        pts = np.asarray(points, dtype=np.float32)
+        if pts.shape == (3,):
+            return self.query_single_with_gradient(pts, kind=kind)
+        if pts.ndim == 2 and pts.shape[1] == 3:
+            n = pts.shape[0]
+            dists = np.empty(n, dtype=np.float32)
+            grads = np.empty((n, 3), dtype=np.float32)
+            for i in range(n):
+                dists[i], grads[i] = self.query_single_with_gradient(
+                    pts[i], kind=kind
+                )
+            return dists, grads
         raise ValueError(
             f"points must have shape (3,) or (N, 3); got shape {pts.shape}"
         )
