@@ -41,8 +41,8 @@ DEFAULT_ARTIFACT_DIR = str(
 # ── 输入 / 输出 ─────────────────────────────────────────────────────────────
 # 已烘焙好的 .npz 路径。设为此值可直接跳过重新烘焙，只做渲染。
 # 若要从 URDF 重新烘焙，请将此项改为 None。
-#LOAD_NPZ: str | None = DEFAULT_OUTPUT_NPZ       # ← 直接加载上次结果
-LOAD_NPZ: str | None = None
+LOAD_NPZ: str | None = DEFAULT_OUTPUT_NPZ       # ← 直接加载上次结果
+#LOAD_NPZ: str | None = None
 
 # 当 LOAD_NPZ = None 时从此 URDF 烘焙（有默认场景时自动填入）。
 URDF_PATH: str | None = DEFAULT_URDF_ARG
@@ -61,7 +61,7 @@ RENDER_3D: bool = True           # ← 默认开启，直接从 LOAD_NPZ 渲染
 
 # 等值面提取的 UDF 阈值（单位：米）。
 # 越小越贴近网格面；越大等于给模型加一层"膨胀壳"。
-RENDER_3D_THRESHOLD: float = 0.5
+RENDER_3D_THRESHOLD: float = 0.03
 
 # 运行 marching cubes 前将 UDF 网格最长轴降采样到该值以内。
 # 越大细节越好，但渲染速度与 HTML 文件体积随之增加。
