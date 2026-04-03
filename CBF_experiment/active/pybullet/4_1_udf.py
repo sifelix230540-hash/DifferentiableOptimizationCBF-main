@@ -41,7 +41,7 @@ DEFAULT_ARTIFACT_DIR = str(
 # ── 输入 / 输出 ─────────────────────────────────────────────────────────────
 # 已烘焙好的 .npz 路径。设为此值可直接跳过重新烘焙，只做渲染。
 # 若要从 URDF 重新烘焙，请将此项改为 None。
-LOAD_NPZ: str | None = DEFAULT_OUTPUT_NPZ       # ← 直接加载上次结果
+LOAD_NPZ: str | None = None       # ← 直接加载上次结果
 #LOAD_NPZ: str | None = None
 
 # 当 LOAD_NPZ = None 时从此 URDF 烘焙（有默认场景时自动填入）。
@@ -70,7 +70,7 @@ RENDER_3D_MAX_SIDE: int = 128
 # ── 3-D 体积热图（整个空间颜色 = UDF 距离）──────────────────────────────────
 RENDER_3D_HEATMAP: bool = True       # 生成体积热图 HTML（需要 plotly）
 HEATMAP_MAX_SIDE: int = 64           # 降采样上限（建议 48~80）
-HEATMAP_DIST_MIN: float = 0.0        # 显示距离下限（米）
+HEATMAP_DIST_MIN: float = -1        # 显示距离下限（米）
 HEATMAP_DIST_MAX: float = 1.3        # 显示距离上限（米，超出部分透明）
 HEATMAP_SURFACE_COUNT: int = 20      # 渲染等值面层数
 HEATMAP_OPACITY: float = 0.15        # 体积不透明度（越小越透明）
