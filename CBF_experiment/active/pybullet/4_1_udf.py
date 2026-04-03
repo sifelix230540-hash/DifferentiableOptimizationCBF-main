@@ -2250,6 +2250,7 @@ def render_3d_heatmap_plotly(
             ("Open3D SDF", field.o3d_sdf_grid, True, "PRGn_r", "o3d SDF (m)")
         )
 
+    cbar_idx = 0
     for vi, (label, raw_grid, is_sdf, cscale, cbar_title) in enumerate(volume_defs):
         raw = np.asarray(raw_grid, dtype=np.float64)
         grid_ds, stride = _downsample_grid(raw, max_side)
@@ -2266,10 +2267,8 @@ def render_3d_heatmap_plotly(
             if finite_vals.size == 0:
                 continue
             sdf_abs_max = float(np.max(np.abs(finite_vals)))
-            v_min, v_max = -sdf_abs_max, sdf_abs_max
             fill_val = sdf_abs_max + 1.0
         else:
-            v_min, v_max = float(dist_min), float(dist_max)
             fill_val = float(dist_max) + 1.0
 
         val = np.where(np.isfinite(grid_ds), grid_ds, fill_val)
@@ -2278,28 +2277,93 @@ def render_3d_heatmap_plotly(
         z_flat = ZZ.ravel().astype(np.float32)
         v_flat = val.ravel().astype(np.float32)
 
-        traces.append(go.Volume(
-            x=x_flat.tolist(),
-            y=y_flat.tolist(),
-            z=z_flat.tolist(),
-            value=v_flat.tolist(),
-            isomin=v_min,
-            isomax=v_max,
-            opacity=float(opacity),
-            surface_count=int(surface_count),
-            colorscale=cscale,
-            colorbar=dict(
-                title=dict(text=cbar_title, side="right"),
-                thickness=14,
-                len=0.6,
-                x=1.0 + vi * 0.06,
-            ),
-            caps=dict(x_show=False, y_show=False, z_show=False),
-            name=f"{label} volume",
-            showlegend=True,
-            visible=True if vi == 0 else "legendonly",
-        ))
-        title_parts.append(label)
+        if is_sdf:
+            neg_finite = finite_vals[finite_vals < 0]
+            has_neg = neg_finite.size > 0
+            neg_min = float(neg_finite.min()) if has_neg else 0.0
+
+            # full-range SDF volume (positive outside hidden by default)
+            traces.append(go.Volume(
+                x=x_flat.tolist(), y=y_flat.tolist(), z=z_flat.tolist(),
+                value=v_flat.tolist(),
+                isomin=-sdf_abs_max, isomax=sdf_abs_max,
+                opacity=float(opacity),
+                surface_count=int(surface_count),
+                colorscale=cscale,
+                colorbar=dict(
+                    title=dict(text=cbar_title, side="right"),
+                    thickness=14, len=0.5,
+                    x=1.0 + cbar_idx * 0.07,
+                ),
+                caps=dict(x_show=False, y_show=False, z_show=False),
+                name=f"{label} full range",
+                showlegend=True,
+                visible="legendonly",
+            ))
+            cbar_idx += 1
+
+            if has_neg:
+                # negative-only volume: shows the interior clearly
+                traces.append(go.Volume(
+                    x=x_flat.tolist(), y=y_flat.tolist(), z=z_flat.tolist(),
+                    value=v_flat.tolist(),
+                    isomin=neg_min, isomax=0.0,
+                    opacity=0.3,
+                    surface_count=max(8, int(surface_count)),
+                    colorscale="Blues_r",
+                    colorbar=dict(
+                        title=dict(text=f"{label} inside (m)", side="right"),
+                        thickness=14, len=0.5,
+                        x=1.0 + cbar_idx * 0.07,
+                    ),
+                    caps=dict(x_show=False, y_show=False, z_show=False),
+                    name=f"{label} inside (d<0)",
+                    showlegend=True,
+                    visible=True,
+                ))
+                cbar_idx += 1
+                title_parts.append(f"{label}(inside)")
+
+            # near-surface band [-margin, +margin] for boundary detail
+            margin_band = min(0.05, sdf_abs_max * 0.1)
+            traces.append(go.Volume(
+                x=x_flat.tolist(), y=y_flat.tolist(), z=z_flat.tolist(),
+                value=v_flat.tolist(),
+                isomin=-margin_band, isomax=margin_band,
+                opacity=0.25,
+                surface_count=10,
+                colorscale="RdYlGn",
+                colorbar=dict(
+                    title=dict(text=f"{label} surface (m)", side="right"),
+                    thickness=14, len=0.5,
+                    x=1.0 + cbar_idx * 0.07,
+                ),
+                caps=dict(x_show=False, y_show=False, z_show=False),
+                name=f"{label} near-surface",
+                showlegend=True,
+                visible="legendonly",
+            ))
+            cbar_idx += 1
+        else:
+            traces.append(go.Volume(
+                x=x_flat.tolist(), y=y_flat.tolist(), z=z_flat.tolist(),
+                value=v_flat.tolist(),
+                isomin=float(dist_min), isomax=float(dist_max),
+                opacity=float(opacity),
+                surface_count=int(surface_count),
+                colorscale=cscale,
+                colorbar=dict(
+                    title=dict(text=cbar_title, side="right"),
+                    thickness=14, len=0.5,
+                    x=1.0 + cbar_idx * 0.07,
+                ),
+                caps=dict(x_show=False, y_show=False, z_show=False),
+                name=f"{label} volume",
+                showlegend=True,
+                visible=True,
+            ))
+            cbar_idx += 1
+            title_parts.append(label)
 
     # ── 可选：叠加等值面轮廓 ──────────────────────────────────────────────────
     if overlay_isosurface:
