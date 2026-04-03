@@ -347,6 +347,74 @@ class DistanceField:
             bbox_max=self.bbox_max,
         )
 
+    def query_batch_vectorized(
+        self,
+        points: np.ndarray,
+        kind: str = "udf",
+        clip: bool = False,
+    ) -> np.ndarray:
+        """Vectorized trilinear batch query — no Python for-loop.
+
+        Parameters
+        ----------
+        points : (N, 3) array-like
+        kind : ``'udf'``, ``'igl_sdf'``, or ``'o3d_sdf'``
+        clip : If *True*, clamp points to the bounding box.
+               If *False*, raise :class:`DistanceFieldQueryOutOfBoundsError`
+               when any point falls outside.
+
+        Returns
+        -------
+        distances : (N,) float32
+        """
+        grid = _grid_for_kind(self, kind)
+        pts = np.asarray(points, dtype=np.float32).reshape(-1, 3)
+
+        bmin = np.asarray(self.bbox_min, dtype=np.float32).reshape(1, 3)
+        bmax = np.asarray(self.bbox_max, dtype=np.float32).reshape(1, 3)
+
+        if not clip:
+            if np.any(pts < bmin) or np.any(pts > bmax):
+                raise DistanceFieldQueryOutOfBoundsError(
+                    "query point(s) outside distance field bbox (clip=False); "
+                    f"bbox_min={bmin.ravel().tolist()} bbox_max={bmax.ravel().tolist()}"
+                )
+        else:
+            pts = np.clip(pts, bmin, bmax)
+
+        origin = np.asarray(self.origin, dtype=np.float32).reshape(1, 3)
+        coord = (pts - origin) / float(self.spacing) - 0.5
+
+        nx, ny, nz = grid.shape
+        ix0 = np.clip(np.floor(coord[:, 0]).astype(np.intp), 0, nx - 2)
+        iy0 = np.clip(np.floor(coord[:, 1]).astype(np.intp), 0, ny - 2)
+        iz0 = np.clip(np.floor(coord[:, 2]).astype(np.intp), 0, nz - 2)
+
+        tx = np.clip(coord[:, 0] - ix0, 0.0, 1.0)
+        ty = np.clip(coord[:, 1] - iy0, 0.0, 1.0)
+        tz = np.clip(coord[:, 2] - iz0, 0.0, 1.0)
+
+        c000 = grid[ix0, iy0, iz0]
+        c001 = grid[ix0, iy0, iz0 + 1]
+        c010 = grid[ix0, iy0 + 1, iz0]
+        c011 = grid[ix0, iy0 + 1, iz0 + 1]
+        c100 = grid[ix0 + 1, iy0, iz0]
+        c101 = grid[ix0 + 1, iy0, iz0 + 1]
+        c110 = grid[ix0 + 1, iy0 + 1, iz0]
+        c111 = grid[ix0 + 1, iy0 + 1, iz0 + 1]
+
+        result = (
+            c000 * (1 - tx) * (1 - ty) * (1 - tz)
+            + c001 * (1 - tx) * (1 - ty) * tz
+            + c010 * (1 - tx) * ty * (1 - tz)
+            + c011 * (1 - tx) * ty * tz
+            + c100 * tx * (1 - ty) * (1 - tz)
+            + c101 * tx * (1 - ty) * tz
+            + c110 * tx * ty * (1 - tz)
+            + c111 * tx * ty * tz
+        )
+        return result.astype(np.float32)
+
     def query(
         self,
         points: np.ndarray,
@@ -357,15 +425,15 @@ class DistanceField:
 
         Returns a 0-d float32 array for a single point and shape ``(N,)`` float32
         for batches. Unsupported ``kind`` raises ``ValueError``.
+
+        Batch inputs are dispatched to :meth:`query_batch_vectorized` for
+        orders-of-magnitude speedup over the per-point loop.
         """
         pts = np.asarray(points, dtype=np.float32)
         if pts.shape == (3,):
             return self.query_single(pts, kind=kind, clip=clip)
         if pts.ndim == 2 and pts.shape[1] == 3:
-            out = np.empty((pts.shape[0],), dtype=np.float32)
-            for i in range(pts.shape[0]):
-                out[i] = self.query_single(pts[i], kind=kind, clip=clip)
-            return out
+            return self.query_batch_vectorized(pts, kind=kind, clip=clip)
         raise ValueError(
             f"points must have shape (3,) or (N, 3); got shape {pts.shape}"
         )
