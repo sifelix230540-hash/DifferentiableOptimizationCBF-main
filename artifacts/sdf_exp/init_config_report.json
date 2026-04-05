@@ -1,0 +1,56 @@
+{
+  "best_joint_config": [
+    {
+      "joint_index": 4,
+      "name": "link04",
+      "angle_rad": 0.04283533270284704,
+      "angle_deg": 2.454283777911849
+    },
+    {
+      "joint_index": 5,
+      "name": "link05",
+      "angle_rad": 0.41795773536508274,
+      "angle_deg": 23.94721425126499
+    },
+    {
+      "joint_index": 6,
+      "name": "link06",
+      "angle_rad": 0.4561564097306292,
+      "angle_deg": 26.13583707540537
+    },
+    {
+      "joint_index": 7,
+      "name": "link07",
+      "angle_rad": 0.27868660786694294,
+      "angle_deg": 15.967566437593195
+    },
+    {
+      "joint_index": 8,
+      "name": "link08",
+      "angle_rad": -0.07743977388720051,
+      "angle_deg": -4.43697221018399
+    },
+    {
+      "joint_index": 9,
+      "name": "link09",
+      "angle_rad": 0.18139231279221357,
+      "angle_deg": 10.39301395911073
+    }
+  ],
+  "occupancy_count": 362,
+  "aabb_volume_m3": 0.1482752494144096,
+  "aabb_max_dim_m": 0.8020431377354404,
+  "aabb_min": [
+    -0.062248777969094116,
+    -0.0838281078594898,
+    0.040000078298224384
+  ],
+  "aabb_max": [
+    0.7397943597663463,
+    0.22247496180759185,
+    0.6435588787082724
+  ],
+  "bbox_radius_m": 1.0054644865621245,
+  "feasible_samples": 400,
+  "total_samples": 400
+}

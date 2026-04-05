@@ -1,0 +1,50 @@
+{
+  "align_mode": "known",
+  "kind": "o3d_sdf",
+  "n_points": 3600,
+  "identity": {
+    "mean": 0.1414807412950985,
+    "p95": 0.3479994833469391,
+    "max": 0.41020283102989197
+  },
+  "known": {
+    "mean": 0.0015053596685069863,
+    "p95": 0.004001735500060022,
+    "max": 0.009022644720971584
+  },
+  "optimized": {
+    "mean": 0.0015053596685069863,
+    "p95": 0.004001735500060022,
+    "max": 0.009022644720971584
+  },
+  "known_transform_pybullet_to_sdf": {
+    "translation": [
+      3.0,
+      -5.0,
+      -0.1
+    ],
+    "rotvec": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "transform_pybullet_to_sdf": {
+    "translation": [
+      3.0,
+      -5.0,
+      -0.1
+    ],
+    "rotvec": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "optimizer": {
+    "success": true,
+    "message": "skipped (known mode)",
+    "nit": -1,
+    "fun": 0.0023763646921698767
+  }
+}
