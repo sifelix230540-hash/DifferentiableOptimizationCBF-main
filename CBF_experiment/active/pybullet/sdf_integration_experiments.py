@@ -53,10 +53,20 @@ class ExperimentParameters:
     NEAR_KIND = "auto"
     NEAR_MIN_CLEARANCE = 0.01
     NEAR_TOP_K = 8
+    NEAR_CANDIDATE_POOL = 256
     NEAR_REQUIRE_ABOVE_WELD = True
     NEAR_ABOVE_WELD_MIN_DZ = 0.0
     NEAR_BBOX_MARGIN = 0.10
     NEAR_SURFACE_NORMAL_EPS = 0.002
+    NEAR_WELD_GOAL_POINT = None
+    NEAR_WELD_GOAL_LINK_NAME = DEFAULT_WELD_GOAL_LINK
+    NEAR_SEAM_SAMPLES = 9
+    NEAR_OCCUPANCY_NPZ = None
+    NEAR_OCCUPANCY_MARGIN = 0.0
+    NEAR_RAY_STEP = 0.02
+    NEAR_REPRESENTATIVE_STRATEGY = "centroid"
+    NEAR_MAX_RAYS_TO_VIS = 12
+    NEAR_TOPK_RAY_SAMPLE_STRIDE = 2
     NEAR_OUTPUT_JSON = "artifacts/sdf_exp/nearest_region.json"
     NEAR_OUTPUT_PNG = "artifacts/sdf_exp/nearest_region.png"
 
@@ -126,12 +136,22 @@ class ExperimentParameters:
             workpiece_urdf_path=cls.DEFAULT_WORKPIECE_URDF_PATH,
             weld_point=None,
             weld_link_name=cls.DEFAULT_WELD_START_LINK,
+            weld_goal_point=cls.NEAR_WELD_GOAL_POINT,
+            weld_goal_link_name=cls.NEAR_WELD_GOAL_LINK_NAME,
+            seam_samples=cls.NEAR_SEAM_SAMPLES,
             min_clearance=cls.NEAR_MIN_CLEARANCE,
             top_k=cls.NEAR_TOP_K,
+            candidate_pool=cls.NEAR_CANDIDATE_POOL,
             surface_normal_eps=cls.NEAR_SURFACE_NORMAL_EPS,
             require_above_weld=cls.NEAR_REQUIRE_ABOVE_WELD,
             above_weld_min_dz=cls.NEAR_ABOVE_WELD_MIN_DZ,
             bbox_margin=cls.NEAR_BBOX_MARGIN,
+            occupancy_npz=cls.NEAR_OCCUPANCY_NPZ,
+            occupancy_margin=cls.NEAR_OCCUPANCY_MARGIN,
+            ray_step=cls.NEAR_RAY_STEP,
+            representative_strategy=cls.NEAR_REPRESENTATIVE_STRATEGY,
+            max_rays_to_vis=cls.NEAR_MAX_RAYS_TO_VIS,
+            topk_ray_sample_stride=cls.NEAR_TOPK_RAY_SAMPLE_STRIDE,
             output_json=cls.NEAR_OUTPUT_JSON,
             output_png=cls.NEAR_OUTPUT_PNG,
         )
@@ -256,6 +276,11 @@ class ExperimentRunner:
     def load_field(self, sdf_npz: str):
         return self.load_udf_module().load_distance_field(sdf_npz)
 
+    @staticmethod
+    def _default_occupancy_npz_path(sdf_npz: str) -> Path:
+        p_npz = Path(sdf_npz)
+        return p_npz.with_name(f"{p_npz.stem}_occ.npz")
+
     def resolve_kind(self, field, kind: str) -> str:
         return kind if kind != "auto" else self._best_kind(field)
 
@@ -275,6 +300,10 @@ class ExperimentRunner:
         pts = np.asarray(pts_sdf, dtype=float).reshape(-1, 3)
         return pts @ r_fwd.T + self._wp_pos.reshape(1, 3)
 
+    def sdf_dirs_to_pb(self, dirs_sdf: np.ndarray) -> np.ndarray:
+        dirs = np.asarray(dirs_sdf, dtype=float).reshape(-1, 3)
+        return dirs @ self._r_inv
+
     def query_field(self, field, points_sdf: np.ndarray, kind: str, safe_oob: bool = False) -> np.ndarray:
         pts = np.asarray(points_sdf, dtype=np.float32).reshape(-1, 3)
         if safe_oob:
@@ -285,6 +314,51 @@ class ExperimentRunner:
 
     def query_field_pb(self, field, points_pybullet: np.ndarray, kind: str) -> np.ndarray:
         return self.query_field(field, self.pb2sdf(points_pybullet), kind=kind)
+
+    def load_or_bake_occupancy_field(
+        self,
+        field,
+        *,
+        sdf_npz: str,
+        workpiece_urdf_path: str,
+        occupancy_npz: str | None,
+        occupancy_margin: float = 0.0,
+    ):
+        udf_mod = self.load_udf_module()
+        occ_path = (
+            Path(occupancy_npz)
+            if occupancy_npz
+            else self._default_occupancy_npz_path(sdf_npz)
+        )
+        if occ_path.exists():
+            occ_field = udf_mod.load_occupancy_field(occ_path)
+            same_shape = tuple(int(x) for x in occ_field.grid.shape) == tuple(int(x) for x in np.asarray(field.udf_grid).shape)
+            same_spacing = abs(float(occ_field.occ_spacing) - float(field.spacing)) < 1e-9
+            same_origin = np.allclose(np.asarray(occ_field.origin), np.asarray(field.origin), atol=1e-6)
+            if same_shape and same_spacing and same_origin:
+                print(f"[occupancy] loaded cache: {occ_path}")
+                return occ_field, occ_path
+            print(f"[occupancy] cache mismatch, rebaking: {occ_path}")
+
+        assy = udf_mod.load_assembly_from_urdf(workpiece_urdf_path)
+        occ_grid, origin, _ = udf_mod.bake_occupancy_grid(
+            assy.triangles,
+            assy.bbox_min,
+            assy.bbox_max,
+            spacing=float(field.spacing),
+            margin=float(field.build_config.get("margin", occupancy_margin)) if field.build_config else float(occupancy_margin),
+        )
+        occ_field = udf_mod.OccupancyField(
+            origin=np.asarray(origin, dtype=np.float32),
+            spacing=float(field.spacing),
+            grid=np.asarray(occ_grid, dtype=np.bool_),
+            bbox_min=np.asarray(assy.bbox_min, dtype=np.float32),
+            bbox_max=np.asarray(assy.bbox_max, dtype=np.float32),
+            occ_spacing=float(field.spacing),
+        )
+        self.ensure_parent(occ_path)
+        udf_mod.save_occupancy_field(occ_path, occ_field)
+        return occ_field, occ_path
 
     def estimate_surface_normal(self, field, point_sdf: np.ndarray, kind: str, eps: float) -> np.ndarray:
         pt = np.asarray(point_sdf, dtype=float).reshape(3)
@@ -461,31 +535,53 @@ class ExperimentRunner:
 
     def show_nearest_region(
         self,
-        weld_point_pb: np.ndarray,
-        surface_normal: np.ndarray,
+        weld_points_pb: np.ndarray,
+        surface_normals_pb: np.ndarray,
+        component_summaries: list[dict],
+        selected_component_id: int | None,
         topk: list[dict],
+        ray_segments: list[dict],
         total_feasible: int,
         n_components: int,
     ) -> None:
         if not (ExperimentParameters.VIS_PYBULLET and "nearest-region" in ExperimentParameters.VIS_PYBULLET_STEPS):
             return
+        weld_point_pb = np.asarray(weld_points_pb[0], dtype=float)
         self.open_scene(
             ExperimentConfig(),
             load_robot=True,
             load_workpiece=True,
             camera_target=weld_point_pb.tolist(),
         )
-        self.create_sphere_marker(weld_point_pb, 0.015, (0.95, 0.15, 0.15, 0.9))
+        for idx, wp in enumerate(np.asarray(weld_points_pb, dtype=float).reshape(-1, 3)):
+            self.create_sphere_marker(wp, 0.012 if idx else 0.015, (0.95, 0.15, 0.15, 0.9))
+        for idx, (wp, nrm) in enumerate(zip(np.asarray(weld_points_pb, dtype=float), np.asarray(surface_normals_pb, dtype=float))):
+            p.addUserDebugLine(
+                wp.tolist(),
+                (wp + 0.10 * nrm).tolist(),
+                [0.1, 0.3, 1.0], lineWidth=2.0 if idx else 3.0,
+            )
         p.addUserDebugText(
-            "weld", (weld_point_pb + np.array([0, 0, 0.03])).tolist(),
+            "seam", (weld_point_pb + np.array([0, 0, 0.03])).tolist(),
             [0.9, 0.1, 0.1], textSize=1.2,
         )
-        nl = 0.15
-        p.addUserDebugLine(
-            weld_point_pb.tolist(),
-            (weld_point_pb + nl * surface_normal).tolist(),
-            [0.1, 0.3, 1.0], lineWidth=3.0,
-        )
+        for comp in component_summaries:
+            rep = np.asarray(comp["representative_pb"], dtype=float)
+            selected = selected_component_id is not None and int(comp["component_id"]) == int(selected_component_id)
+            rgba = (1.0, 0.7, 0.0, 0.95) if selected else (0.75, 0.75, 0.75, 0.6)
+            self.create_sphere_marker(rep, 0.014 if selected else 0.01, rgba)
+            p.addUserDebugText(
+                f"C{comp['component_id']} v={comp['votes']}",
+                (rep + np.array([0, 0, 0.02])).tolist(),
+                [0.4, 0.2, 0.1] if selected else [0.3, 0.3, 0.3],
+                textSize=0.8,
+            )
+        for seg in ray_segments:
+            a = np.asarray(seg["start"], dtype=float)
+            b = np.asarray(seg["end"], dtype=float)
+            occ_len = float(seg["occupied_length"])
+            col = [0.2, 0.8, 0.2] if occ_len <= 1e-6 else [0.9, 0.2, 0.2]
+            p.addUserDebugLine(a.tolist(), b.tolist(), col, lineWidth=2.0)
         for i, cand in enumerate(topk):
             cp = np.asarray(cand["point"], dtype=float)
             self.create_sphere_marker(cp, 0.012, (0.1, 0.9, 0.2, 0.9))
@@ -494,12 +590,12 @@ class ExperimentRunner:
                 [0.4, 0.8, 0.2], lineWidth=1.5,
             )
             p.addUserDebugText(
-                f"#{i+1} d={cand['score']*1000:.1f}mm",
+                f"#{i+1} score={cand['score']:.3f}",
                 (cp + np.array([0, 0, 0.02])).tolist(),
                 [0.1, 0.6, 0.1], textSize=0.9,
             )
         p.addUserDebugText(
-            f"feasible: {total_feasible} voxels, {n_components} components",
+            f"feasible: {total_feasible} voxels, {n_components} components, selected={selected_component_id}",
             [0.0, -0.3, 0.5], [0.1, 0.1, 0.1], textSize=1.2,
         )
         self.wait()
@@ -732,6 +828,152 @@ class NearestRegionExperiment:
         self.runner = runner
         self.settings = settings
 
+    @staticmethod
+    def _sample_segment(start: np.ndarray, goal: np.ndarray, num_samples: int) -> np.ndarray:
+        p0 = np.asarray(start, dtype=float).reshape(3)
+        p1 = np.asarray(goal, dtype=float).reshape(3)
+        n = max(2, int(num_samples))
+        if np.linalg.norm(p1 - p0) < 1e-9:
+            return np.repeat(p0.reshape(1, 3), n, axis=0)
+        t = np.linspace(0.0, 1.0, n, dtype=float)
+        return (1.0 - t[:, None]) * p0.reshape(1, 3) + t[:, None] * p1.reshape(1, 3)
+
+    @staticmethod
+    def _point_to_segment_distance(points: np.ndarray, seg_a: np.ndarray, seg_b: np.ndarray) -> np.ndarray:
+        pts = np.asarray(points, dtype=float).reshape(-1, 3)
+        a = np.asarray(seg_a, dtype=float).reshape(1, 3)
+        b = np.asarray(seg_b, dtype=float).reshape(1, 3)
+        ab = b - a
+        denom = float(np.dot(ab.ravel(), ab.ravel()))
+        if denom < 1e-12:
+            return np.linalg.norm(pts - a, axis=1)
+        t = np.sum((pts - a) * ab, axis=1) / denom
+        t = np.clip(t, 0.0, 1.0)
+        proj = a + t[:, None] * ab
+        return np.linalg.norm(pts - proj, axis=1)
+
+    @staticmethod
+    def _world_points_from_indices(field, ijk: np.ndarray) -> np.ndarray:
+        idx = np.asarray(ijk, dtype=float).reshape(-1, 3)
+        origin = np.asarray(field.origin, dtype=float).reshape(1, 3)
+        sp = float(field.spacing)
+        return origin + (idx + 0.5) * sp
+
+    @staticmethod
+    def _nearest_voxel_to_point(points: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, int]:
+        pts = np.asarray(points, dtype=float).reshape(-1, 3)
+        tgt = np.asarray(target, dtype=float).reshape(1, 3)
+        d = np.linalg.norm(pts - tgt, axis=1)
+        idx = int(np.argmin(d))
+        return pts[idx], idx
+
+    def _resolve_weld_endpoint_pb(self, workpiece: WorkpieceModel, point_text: str | None, link_name: str | None) -> np.ndarray:
+        if point_text:
+            return self.runner.parse_vec3(point_text).reshape(3)
+        if not link_name:
+            raise ValueError("weld endpoint requires either explicit point or link name")
+        pt, _ = workpiece.get_frame_pose(link_name)
+        return np.asarray(pt, dtype=float).reshape(3)
+
+    def _ray_occupied_length(self, occ_field, start: np.ndarray, end: np.ndarray, step: float) -> float:
+        p0 = np.asarray(start, dtype=float).reshape(3)
+        p1 = np.asarray(end, dtype=float).reshape(3)
+        seg = p1 - p0
+        seg_len = float(np.linalg.norm(seg))
+        if seg_len < 1e-12:
+            return 0.0
+        n_seg = max(1, int(math.ceil(seg_len / max(float(step), 1e-4))))
+        seg_step = seg_len / n_seg
+        occ_len = 0.0
+        for i in range(n_seg):
+            t_mid = (i + 0.5) / n_seg
+            pmid = p0 + t_mid * seg
+            if occ_field.is_occupied(pmid):
+                occ_len += seg_step
+        return float(occ_len)
+
+    def _component_summary(
+        self,
+        field,
+        comp_id: int,
+        comp_ijk: np.ndarray,
+        comp_xyz: np.ndarray,
+        comp_vals: np.ndarray,
+    ) -> dict:
+        centroid = np.mean(comp_xyz, axis=0)
+        rep_sdf, rep_local_idx = self._nearest_voxel_to_point(comp_xyz, centroid)
+        rep_ijk = np.asarray(comp_ijk[int(rep_local_idx)], dtype=int)
+        bbox_min = np.min(comp_xyz, axis=0)
+        bbox_max = np.max(comp_xyz, axis=0)
+        return {
+            "component_id": int(comp_id),
+            "voxel_count": int(comp_xyz.shape[0]),
+            "representative_sdf": rep_sdf.tolist(),
+            "representative_pb": self.runner.sdf2pb(rep_sdf.reshape(1, 3)).reshape(3).tolist(),
+            "representative_ijk": rep_ijk.tolist(),
+            "centroid_sdf": centroid.tolist(),
+            "bbox_min_sdf": bbox_min.tolist(),
+            "bbox_max_sdf": bbox_max.tolist(),
+            "bbox_min_pb": self.runner.sdf2pb(bbox_min.reshape(1, 3)).reshape(3).tolist(),
+            "bbox_max_pb": self.runner.sdf2pb(bbox_max.reshape(1, 3)).reshape(3).tolist(),
+            "clearance_min": float(np.min(comp_vals)),
+            "clearance_mean": float(np.mean(comp_vals)),
+            "clearance_max": float(np.max(comp_vals)),
+            "votes": 0,
+            "total_occlusion_length": 0.0,
+            "mean_rep_distance_to_seam": 0.0,
+        }
+
+    def _rank_topk_points(
+        self,
+        comp_xyz: np.ndarray,
+        comp_vals: np.ndarray,
+        seam_points: np.ndarray,
+        seam_start: np.ndarray,
+        seam_goal: np.ndarray,
+        occ_field,
+        args: SimpleNamespace,
+    ) -> list[dict]:
+        if comp_xyz.size == 0:
+            return []
+        seam_dist = self._point_to_segment_distance(comp_xyz, seam_start, seam_goal)
+        stride = max(1, int(getattr(args, "topk_ray_sample_stride", 2)))
+        seam_ray_pts = seam_points[::stride]
+        if seam_ray_pts.shape[0] == 0 or not np.allclose(seam_ray_pts[-1], seam_points[-1]):
+            seam_ray_pts = np.vstack([seam_ray_pts, seam_points[-1]])
+        candidate_pool = min(int(getattr(args, "candidate_pool", 256)), comp_xyz.shape[0])
+        prelim_score = seam_dist - 0.20 * np.asarray(comp_vals, dtype=float)
+        prelim_idx = np.argsort(prelim_score)[:candidate_pool]
+        ranked: list[dict] = []
+        above_min_dz = float(getattr(args, "above_weld_min_dz", 0.0))
+        require_above = bool(getattr(args, "require_above_weld", False))
+        for idx in prelim_idx:
+            pt = np.asarray(comp_xyz[idx], dtype=float)
+            clearance = float(comp_vals[idx])
+            ray_costs = [
+                self._ray_occupied_length(occ_field, wp, pt, float(args.ray_step))
+                for wp in seam_ray_pts
+            ]
+            avg_ray = float(np.mean(ray_costs)) if ray_costs else 0.0
+            z_violation = 0.0
+            if require_above:
+                z_violation = float(np.mean(np.maximum(seam_ray_pts[:, 2] + above_min_dz - pt[2], 0.0)))
+            score = float(seam_dist[idx] + 3.0 * avg_ray + 10.0 * z_violation - 0.30 * clearance)
+            ranked.append(
+                {
+                    "point_sdf": pt.tolist(),
+                    "point": self.runner.sdf2pb(pt.reshape(1, 3)).reshape(3).tolist(),
+                    "score": score,
+                    "distance_to_seam": float(seam_dist[idx]),
+                    "distance_value": clearance,
+                    "avg_occlusion_length": avg_ray,
+                    "z_violation": z_violation,
+                    "min_kernel_value": None,
+                }
+            )
+        ranked.sort(key=lambda item: (item["score"], item["avg_occlusion_length"], item["distance_to_seam"], -item["distance_value"]))
+        return ranked[: max(1, int(args.top_k))]
+
     def run(self) -> None:
         from scipy.ndimage import label as ndimage_label
 
@@ -746,30 +988,49 @@ class NearestRegionExperiment:
             if args.workpiece_urdf_path:
                 cfg.workpiece_urdf_path = args.workpiece_urdf_path
             workpiece = WorkpieceModel(cfg)
-            if args.weld_point:
-                weld_point_pb = self.runner.parse_vec3(args.weld_point)
-            else:
-                weld_point_pb, _ = workpiece.get_frame_pose(args.weld_link_name)
-                weld_point_pb = np.asarray(weld_point_pb, dtype=float)
+            weld_start_pb = self._resolve_weld_endpoint_pb(workpiece, args.weld_point, args.weld_link_name)
+            weld_goal_pb = self._resolve_weld_endpoint_pb(
+                workpiece,
+                getattr(args, "weld_goal_point", None),
+                getattr(args, "weld_goal_link_name", None),
+            )
         finally:
             p.disconnect()
 
-        weld_point = self.runner.pb2sdf(weld_point_pb).reshape(3)
-        print(f"[nearest] weld PB={weld_point_pb.tolist()} -> SDF={weld_point.tolist()}")
-
-        surface_normal = self.runner.estimate_surface_normal(
-            field,
-            weld_point,
-            kind,
-            eps=float(getattr(args, "surface_normal_eps", ExperimentParameters.NEAR_SURFACE_NORMAL_EPS)),
+        seam_points_pb = self._sample_segment(
+            weld_start_pb,
+            weld_goal_pb,
+            int(getattr(args, "seam_samples", ExperimentParameters.NEAR_SEAM_SAMPLES)),
         )
-        print(f"[nearest] surface normal at weld: {surface_normal.tolist()}")
+        seam_points = self.runner.pb2sdf(seam_points_pb)
+        surface_normals = np.vstack(
+            [
+                self.runner.estimate_surface_normal(
+                    field,
+                    seam_pt,
+                    kind,
+                    eps=float(getattr(args, "surface_normal_eps", ExperimentParameters.NEAR_SURFACE_NORMAL_EPS)),
+                )
+                for seam_pt in seam_points
+            ]
+        )
+        surface_normals_pb = self.runner.sdf_dirs_to_pb(surface_normals)
+        surface_normals_pb /= np.maximum(
+            np.linalg.norm(surface_normals_pb, axis=1, keepdims=True),
+            1e-12,
+        )
+        d_seam = self.runner.query_field(field, seam_points, kind=kind)
+        print(
+            f"[nearest] seam start/end PB={weld_start_pb.tolist()} -> {weld_goal_pb.tolist()}  "
+            f"samples={seam_points.shape[0]}"
+        )
+        print(
+            f"[nearest] seam SDF range = "
+            f"[{float(np.min(d_seam)):.6f}, {float(np.max(d_seam)):.6f}] m"
+        )
 
         require_above = bool(getattr(args, "require_above_weld", ExperimentParameters.NEAR_REQUIRE_ABOVE_WELD))
         above_min_dz = float(getattr(args, "above_weld_min_dz", ExperimentParameters.NEAR_ABOVE_WELD_MIN_DZ))
-
-        d_weld = float(self.runner.query_field(field, weld_point.reshape(1, 3), kind=kind)[0])
-        print(f"[nearest] SDF at weld point = {d_weld:.6f} m")
 
         bbox_radius = 0.0
         kernel_npz_path = getattr(args, "kernel_npz", None)
@@ -786,107 +1047,244 @@ class NearestRegionExperiment:
             f"-> effective_clearance={effective_clearance:.4f}m"
         )
 
-        grid = np.asarray(udf_mod._grid_for_kind(field, kind), dtype=float)
-        bmin = np.asarray(field.bbox_min, dtype=float)
-        bmax = np.asarray(field.bbox_max, dtype=float)
-        nx, ny, nz = grid.shape
-        xs = np.linspace(bmin[0], bmax[0], nx)
-        ys = np.linspace(bmin[1], bmax[1], ny)
-        zs = np.linspace(bmin[2], bmax[2], nz)
-        print(f"[nearest] grid shape={grid.shape}  spacing~{np.round((bmax-bmin)/(np.array(grid.shape)-1), 5).tolist()}")
+        occ_field, occ_path = self.runner.load_or_bake_occupancy_field(
+            field,
+            sdf_npz=args.sdf_npz,
+            workpiece_urdf_path=args.workpiece_urdf_path,
+            occupancy_npz=getattr(args, "occupancy_npz", None),
+            occupancy_margin=float(getattr(args, "occupancy_margin", 0.0)),
+        )
+        print(f"[nearest] occupancy cache = {occ_path}")
 
-        mask = grid > effective_clearance
+        grid = np.asarray(udf_mod._grid_for_kind(field, kind), dtype=float)
+        nx, ny, nz = grid.shape
+        origin = np.asarray(field.origin, dtype=float)
+        spacing = float(field.spacing)
+        xs = origin[0] + (np.arange(nx, dtype=float) + 0.5) * spacing
+        ys = origin[1] + (np.arange(ny, dtype=float) + 0.5) * spacing
+        zs = origin[2] + (np.arange(nz, dtype=float) + 0.5) * spacing
+        print(f"[nearest] grid shape={grid.shape}  spacing={spacing:.5f}m")
+
+        mask = np.isfinite(grid) & (grid > effective_clearance)
         print(f"[nearest] voxels with SDF>{effective_clearance:.3f}: {int(np.sum(mask))} / {grid.size}")
 
-        if require_above:
-            z_threshold = weld_point[2] + above_min_dz
-            z_ok = zs >= z_threshold
-            mask[:, :, ~z_ok] = False
-
         n_feasible = int(np.sum(mask))
-        print(f"[nearest] feasible voxels (+ z-filter): {n_feasible}")
+        print(f"[nearest] feasible voxels: {n_feasible}")
 
         topk = []
         n_components = 0
         total_feasible = 0
+        selected_component_id: int | None = None
+        component_summaries: list[dict] = []
+        ray_segments: list[dict] = []
         if n_feasible > 0:
             labels, n_components = ndimage_label(mask)
             print(f"[nearest] connected components: {n_components}")
 
             feasible_ijk = np.argwhere(mask)
-            feasible_xyz = np.column_stack([
-                xs[feasible_ijk[:, 0]],
-                ys[feasible_ijk[:, 1]],
-                zs[feasible_ijk[:, 2]],
-            ])
+            feasible_xyz = self._world_points_from_indices(field, feasible_ijk)
             feasible_labels = labels[mask]
-            dists = np.linalg.norm(feasible_xyz - weld_point.reshape(1, 3), axis=1)
-
-            best_comp = -1
-            best_comp_dist = float("inf")
+            seam_start = seam_points[0]
+            seam_goal = seam_points[-1]
+            comp_arrays: dict[int, dict[str, np.ndarray]] = {}
             for comp_id in range(1, n_components + 1):
-                comp_mask = feasible_labels == comp_id
-                comp_min_dist = float(np.min(dists[comp_mask]))
-                if comp_min_dist < best_comp_dist:
-                    best_comp_dist = comp_min_dist
-                    best_comp = comp_id
+                comp_sel = feasible_labels == comp_id
+                comp_xyz = feasible_xyz[comp_sel]
+                comp_ijk = feasible_ijk[comp_sel]
+                comp_vals = grid[tuple(comp_ijk.T)]
+                comp_arrays[int(comp_id)] = {
+                    "xyz": comp_xyz,
+                    "ijk": comp_ijk,
+                    "vals": np.asarray(comp_vals, dtype=float),
+                }
+                summary = self._component_summary(field, comp_id, comp_ijk, comp_xyz, comp_vals)
+                summary["mean_rep_distance_to_seam"] = float(
+                    self._point_to_segment_distance(
+                        np.asarray(summary["representative_sdf"], dtype=float).reshape(1, 3),
+                        seam_start,
+                        seam_goal,
+                    )[0]
+                )
+                component_summaries.append(summary)
 
-            comp_sel = feasible_labels == best_comp
-            comp_xyz = feasible_xyz[comp_sel]
-            comp_dists = dists[comp_sel]
-            comp_ijk = feasible_ijk[comp_sel]
-            total_feasible = int(np.sum(comp_sel))
-
-            sorted_idx = np.argsort(comp_dists)
-            top_k_n = min(int(args.top_k), len(sorted_idx))
-            for rank in range(top_k_n):
-                idx = sorted_idx[rank]
-                pt_sdf = comp_xyz[idx]
-                pt_pb = self.runner.sdf2pb(pt_sdf.reshape(1, 3)).reshape(3)
-                sdf_val = float(grid[tuple(comp_ijk[idx])])
-                topk.append(
+            vote_stats: dict[int, dict[str, float]] = {
+                int(comp["component_id"]): {
+                    "votes": 0,
+                    "total_occlusion_length": 0.0,
+                    "total_distance": 0.0,
+                    "per_sample_occlusion_lengths": [],
+                    "per_sample_total_costs": [],
+                }
+                for comp in component_summaries
+            }
+            for sample_idx, seam_pt in enumerate(seam_points):
+                best_id = None
+                best_key = None
+                best_occ = None
+                best_rep = None
+                for comp in component_summaries:
+                    comp_id = int(comp["component_id"])
+                    rep = np.asarray(comp["representative_sdf"], dtype=float)
+                    occ_len = self._ray_occupied_length(occ_field, seam_pt, rep, float(getattr(args, "ray_step", 0.02)))
+                    dist = float(np.linalg.norm(rep - seam_pt))
+                    z_penalty = 0.0
+                    if require_above:
+                        z_penalty = max(0.0, seam_pt[2] + above_min_dz - rep[2])
+                    total_cost = occ_len + 5.0 * z_penalty
+                    vote_stats[comp_id]["per_sample_occlusion_lengths"].append(float(occ_len))
+                    vote_stats[comp_id]["per_sample_total_costs"].append(float(total_cost))
+                    key = (total_cost, dist)
+                    if best_key is None or key < best_key:
+                        best_key = key
+                        best_id = comp_id
+                        best_occ = occ_len
+                        best_rep = rep
+                if best_id is None:
+                    continue
+                vote_stats[best_id]["votes"] += 1
+                vote_stats[best_id]["total_occlusion_length"] += float(best_occ)
+                vote_stats[best_id]["total_distance"] += float(np.linalg.norm(best_rep - seam_pt))
+                ray_segments.append(
                     {
-                        "point": pt_pb.tolist(),
-                        "score": float(comp_dists[idx]),
-                        "distance_value": sdf_val,
-                        "min_kernel_value": None,
+                        "sample_index": int(sample_idx),
+                        "component_id": int(best_id),
+                        "start": self.runner.sdf2pb(seam_pt.reshape(1, 3)).reshape(3).tolist(),
+                        "end": self.runner.sdf2pb(np.asarray(best_rep, dtype=float).reshape(1, 3)).reshape(3).tolist(),
+                        "occupied_length": float(best_occ),
                     }
                 )
-            print(f"[nearest] best component #{best_comp}: {total_feasible} voxels, nearest={best_comp_dist:.4f}m")
+
+            component_summaries.sort(
+                key=lambda comp: (
+                    -vote_stats[int(comp["component_id"])]["votes"],
+                    vote_stats[int(comp["component_id"])]["total_occlusion_length"],
+                    vote_stats[int(comp["component_id"])]["total_distance"],
+                )
+            )
+            for comp in component_summaries:
+                cid = int(comp["component_id"])
+                comp["votes"] = int(vote_stats[cid]["votes"])
+                comp["total_occlusion_length"] = float(vote_stats[cid]["total_occlusion_length"])
+                n_vote = max(1, int(vote_stats[cid]["votes"]))
+                comp["mean_vote_distance"] = float(vote_stats[cid]["total_distance"] / n_vote)
+                comp["mean_total_cost"] = float(np.mean(vote_stats[cid]["per_sample_total_costs"])) if vote_stats[cid]["per_sample_total_costs"] else 0.0
+
+            if component_summaries:
+                selected_component_id = int(component_summaries[0]["component_id"])
+                sel = comp_arrays[selected_component_id]
+                total_feasible = int(sel["xyz"].shape[0])
+                topk = self._rank_topk_points(
+                    sel["xyz"],
+                    sel["vals"],
+                    seam_points,
+                    seam_start,
+                    seam_goal,
+                    occ_field,
+                    args,
+                )
+                print(
+                    f"[nearest] selected component #{selected_component_id}: "
+                    f"voxels={total_feasible}, votes={component_summaries[0]['votes']}, "
+                    f"occ={component_summaries[0]['total_occlusion_length']:.4f}m"
+                )
 
         out_json = Path(args.output_json)
         self.runner.ensure_parent(out_json)
         payload = {
             "kind": kind,
-            "weld_point": weld_point_pb.tolist(),
-            "weld_point_sdf": weld_point.tolist(),
-            "sdf_at_weld": d_weld,
-            "surface_normal": surface_normal.tolist(),
+            "weld_start_point": weld_start_pb.tolist(),
+            "weld_goal_point": weld_goal_pb.tolist(),
+            "sampled_weld_points": seam_points_pb.tolist(),
+            "sampled_weld_points_sdf": seam_points.tolist(),
+            "sampled_sdf_values": np.asarray(d_seam, dtype=float).tolist(),
+            "surface_normals_sdf": surface_normals.tolist(),
+            "surface_normals_pb": surface_normals_pb.tolist(),
             "total_feasible": total_feasible,
             "n_components": n_components,
+            "components_summary": component_summaries,
+            "component_votes": [
+                {
+                    "component_id": int(comp["component_id"]),
+                    "votes": int(comp["votes"]),
+                    "total_occlusion_length": float(comp["total_occlusion_length"]),
+                    "mean_rep_distance_to_seam": float(comp["mean_rep_distance_to_seam"]),
+                    "mean_total_cost": float(comp.get("mean_total_cost", 0.0)),
+                }
+                for comp in component_summaries
+            ],
+            "component_occlusion_costs": [
+                {
+                    "component_id": int(comp["component_id"]),
+                    "per_sample_occlusion_lengths": [
+                        float(x) for x in vote_stats[int(comp["component_id"])]["per_sample_occlusion_lengths"]
+                    ],
+                    "per_sample_total_costs": [
+                        float(x) for x in vote_stats[int(comp["component_id"])]["per_sample_total_costs"]
+                    ],
+                }
+                for comp in component_summaries
+            ],
+            "selected_component_id": selected_component_id,
             "top_k": topk,
             "params": {
                 "bbox_radius": bbox_radius,
                 "bbox_margin": bbox_margin,
                 "effective_clearance": effective_clearance,
                 "require_above_weld": require_above,
+                "occupancy_npz": str(occ_path),
+                "ray_step": float(getattr(args, "ray_step", 0.02)),
             },
         }
         out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        fig = plt.figure(figsize=(6.4, 5.2))
-        ax = fig.add_subplot(111, projection="3d")
-        ax.scatter([weld_point_pb[0]], [weld_point_pb[1]], [weld_point_pb[2]], c="red", s=60, label="weld")
+        fig = plt.figure(figsize=(11.5, 5.4))
+        ax = fig.add_subplot(121, projection="3d")
+        ax.scatter(seam_points_pb[:, 0], seam_points_pb[:, 1], seam_points_pb[:, 2], c="red", s=36, label="seam samples")
+        for wp, nrm in zip(seam_points_pb, surface_normals_pb):
+            ax.quiver(wp[0], wp[1], wp[2], nrm[0], nrm[1], nrm[2], length=0.08, color="royalblue")
+        for comp in component_summaries:
+            rep_pb = np.asarray(comp["representative_pb"], dtype=float)
+            selected = selected_component_id is not None and int(comp["component_id"]) == int(selected_component_id)
+            ax.scatter(
+                [rep_pb[0]], [rep_pb[1]], [rep_pb[2]],
+                c="orange" if selected else "gray",
+                s=60 if selected else 26,
+                alpha=0.95 if selected else 0.6,
+            )
+        for seg in ray_segments[: max(1, int(getattr(args, "max_rays_to_vis", 12)))]:
+            a = np.asarray(seg["start"], dtype=float)
+            b = np.asarray(seg["end"], dtype=float)
+            occ_len = float(seg["occupied_length"])
+            ax.plot(
+                [a[0], b[0]], [a[1], b[1]], [a[2], b[2]],
+                c="green" if occ_len <= 1e-6 else "crimson",
+                lw=1.2,
+                alpha=0.85,
+            )
         if topk:
             pts_vis = np.asarray([x["point"] for x in topk], dtype=float)
             ax.scatter(pts_vis[:, 0], pts_vis[:, 1], pts_vis[:, 2], c="limegreen", s=28, label="top-k")
-        ax.quiver(
-            weld_point_pb[0], weld_point_pb[1], weld_point_pb[2],
-            surface_normal[0], surface_normal[1], surface_normal[2],
-            length=0.1, color="blue", label="normal",
-        )
-        ax.set_title("Nearest feasible region (voxel filter)")
-        ax.legend()
+        ax.set_title("Seam-region decision (3D)")
+        ax.legend(loc="upper left")
+
+        ax_bar = fig.add_subplot(122)
+        if component_summaries:
+            labels_bar = [f"C{comp['component_id']}" for comp in component_summaries]
+            votes_bar = [float(comp["votes"]) for comp in component_summaries]
+            occ_bar = [float(comp["total_occlusion_length"]) for comp in component_summaries]
+            y = np.arange(len(labels_bar))
+            ax_bar.barh(y, votes_bar, color="steelblue", alpha=0.85)
+            for yi, (v, occ) in enumerate(zip(votes_bar, occ_bar)):
+                ax_bar.text(v + 0.05, yi, f"occ={occ:.3f}m", va="center", fontsize=8)
+            ax_bar.set_yticks(y, labels_bar)
+            ax_bar.invert_yaxis()
+            ax_bar.set_xlabel("votes")
+            ax_bar.set_title("Component votes / occlusion")
+        else:
+            ax_bar.text(0.5, 0.5, "no feasible components", ha="center", va="center")
+            ax_bar.set_axis_off()
+
+        fig.tight_layout()
         out_png = Path(args.output_png)
         self.runner.ensure_parent(out_png)
         fig.savefig(out_png, dpi=140)
@@ -894,7 +1292,16 @@ class NearestRegionExperiment:
         print(f"[nearest] done -> {out_json}")
         if not topk:
             print("[nearest] WARNING: no feasible voxel found.")
-        self.runner.show_nearest_region(weld_point_pb, surface_normal, topk, total_feasible, n_components)
+        self.runner.show_nearest_region(
+            seam_points_pb,
+            surface_normals_pb,
+            component_summaries,
+            selected_component_id,
+            topk,
+            ray_segments[: max(1, int(getattr(args, "max_rays_to_vis", 12)))],
+            total_feasible,
+            n_components,
+        )
 
 
 class InitConfigExperiment:
