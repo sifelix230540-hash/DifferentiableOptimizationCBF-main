@@ -41,7 +41,7 @@ DEFAULT_ARTIFACT_DIR = str(
 # ── 输入 / 输出 ─────────────────────────────────────────────────────────────
 # 已烘焙好的 .npz 路径。设为此值可直接跳过重新烘焙，只做渲染。
 # 若要从 URDF 重新烘焙，请将此项改为 None。
-LOAD_NPZ: str | None = None       # ← 直接加载上次结果
+LOAD_NPZ: str | None = DEFAULT_OUTPUT_NPZ       # ← 直接加载上次结果
 #LOAD_NPZ: str | None = None
 
 # 当 LOAD_NPZ = None 时从此 URDF 烘焙（有默认场景时自动填入）。
@@ -55,6 +55,8 @@ ARTIFACT_DIR: str | None = DEFAULT_ARTIFACT_DIR
 
 # ── 2-D 渲染（切片热图、散点对比、符号诊断）──────────────────────────────
 RENDER_2D: bool = True          # True = 同时生成 2-D PNG 套件
+RENDER_INSIDE_SDF_SLICES: bool = True   # 为 libigl / Open3D 额外输出“仅内部负值”切片图
+INSIDE_SDF_SLICE_PERCENTILE: float = 98.0  # 内部热图上限采用负值深度分位数，增强对比度
 
 # ── 3-D 渲染（等值面 PNG + 交互式 HTML）─────────────────────────────────────
 RENDER_3D: bool = True           # ← 默认开启，直接从 LOAD_NPZ 渲染
@@ -75,6 +77,8 @@ HEATMAP_DIST_MAX: float = 0.001        # 显示距离上限（米，超出部分
 HEATMAP_SURFACE_COUNT: int = 20      # 渲染等值面层数
 HEATMAP_OPACITY: float = 0.15        # 体积不透明度（越小越透明）
 HEATMAP_OVERLAY_ISOSURFACE: bool = True  # 叠加等值面轮廓（需要 scikit-image）
+HEATMAP_INSIDE_OPACITY: float = 0.55    # 内部 SDF 体积层不透明度
+HEATMAP_INSIDE_SURFACE_COUNT: int = 24  # 内部 SDF 体积层等值面数
 
 # ── 烘焙参数（仅 LOAD_NPZ = None 时生效）────────────────────────────────────
 BAKE_SPACING: float = 0.02               # 体素边长（米）
@@ -1704,10 +1708,21 @@ def _save_masked_heatmap(
     *,
     cmap: str = "viridis",
     symmetric: bool = False,
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> Path:
     plt = _matplotlib_pyplot_agg()
     fig, ax = plt.subplots(figsize=(6, 5))
-    if symmetric:
+    if vmin is not None or vmax is not None:
+        im = ax.imshow(
+            data_ma,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            aspect="auto",
+        )
+    elif symmetric:
         filled = np.ma.filled(data_ma, np.nan)
         if np.any(np.isfinite(filled)):
             m = float(np.nanmax(np.abs(filled)))
@@ -1730,6 +1745,37 @@ def _save_masked_heatmap(
     fig.savefig(path, dpi=120, bbox_inches="tight")
     plt.close(fig)
     return path
+
+
+def _save_inside_sdf_heatmap(
+    data_ma: np.ma.MaskedArray,
+    title: str,
+    path: Path,
+    *,
+    percentile: float = 98.0,
+    cmap: str = "inferno",
+) -> Path | None:
+    """Render only the negative interior of an SDF slice as positive depth.
+
+    The output uses ``-sdf`` for voxels with ``sdf < 0`` so deeper interior
+    values become brighter and the weak near-zero contrast issue is reduced.
+    """
+    filled = np.ma.filled(data_ma, np.nan)
+    inside_depth = np.where(np.isfinite(filled) & (filled < 0.0), -filled, np.nan)
+    if not np.any(np.isfinite(inside_depth)):
+        return None
+    depth_ma = np.ma.masked_invalid(inside_depth)
+    finite_depth = np.asarray(depth_ma.compressed(), dtype=np.float64)
+    vmax = float(np.percentile(finite_depth, percentile)) if finite_depth.size > 1 else float(finite_depth[0])
+    vmax = max(vmax, 1e-6)
+    return _save_masked_heatmap(
+        depth_ma,
+        title,
+        path,
+        cmap=cmap,
+        vmin=0.0,
+        vmax=vmax,
+    )
 
 
 def render_slice_comparison(
@@ -1766,6 +1812,15 @@ def render_slice_comparison(
             symmetric=True,
         )
     )
+    if RENDER_INSIDE_SDF_SLICES:
+        p_inside = _save_inside_sdf_heatmap(
+            igl_ma,
+            f"libigl inside depth (-SDF) ({axis_name}={idx})",
+            out / f"{tag}_igl_sdf_inside.png",
+            percentile=INSIDE_SDF_SLICE_PERCENTILE,
+        )
+        if p_inside is not None:
+            paths.append(p_inside)
 
     o3d_ma = prepare_slice_for_plot(field.o3d_sdf_grid, axis, idx)
     paths.append(
@@ -1777,6 +1832,15 @@ def render_slice_comparison(
             symmetric=True,
         )
     )
+    if RENDER_INSIDE_SDF_SLICES:
+        p_inside = _save_inside_sdf_heatmap(
+            o3d_ma,
+            f"Open3D inside depth (-SDF) ({axis_name}={idx})",
+            out / f"{tag}_o3d_sdf_inside.png",
+            percentile=INSIDE_SDF_SLICE_PERCENTILE,
+        )
+        if p_inside is not None:
+            paths.append(p_inside)
 
     u = np.asarray(_slice_2d_array(field.udf_grid, axis, idx), dtype=np.float64)
     ig = np.asarray(_slice_2d_array(field.igl_sdf_grid, axis, idx), dtype=np.float64)
@@ -2376,9 +2440,9 @@ def render_3d_heatmap_plotly(
                     x=x_flat.tolist(), y=y_flat.tolist(), z=z_flat.tolist(),
                     value=v_flat.tolist(),
                     isomin=neg_min, isomax=0.0,
-                    opacity=0.3,
-                    surface_count=max(8, int(surface_count)),
-                    colorscale="Blues_r",
+                    opacity=float(HEATMAP_INSIDE_OPACITY),
+                    surface_count=max(int(HEATMAP_INSIDE_SURFACE_COUNT), int(surface_count)),
+                    colorscale="Inferno",
                     colorbar=dict(
                         title=dict(text=f"{label} inside (m)", side="right"),
                         thickness=14, len=0.5,
