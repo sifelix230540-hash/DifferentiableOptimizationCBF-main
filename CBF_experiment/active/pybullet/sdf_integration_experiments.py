@@ -104,6 +104,18 @@ class ExperimentParameters:
     PLAN_INIT_CONFIG_NPZ = INIT_OUTPUT_NPZ
     PLAN_START = None
     PLAN_GOAL = None
+    PLAN_EE_MIN_CLEARANCE = 0.05
+    PLAN_EE_TARGET_SDF = 0.10
+    PLAN_EE_BACKTRACK_INIT_STEP = 0.20
+    PLAN_EE_BACKTRACK_MIN_STEP = 0.005
+    PLAN_EE_BACKTRACK_SHRINK = 0.5
+    PLAN_EE_BACKTRACK_MAX_ITERS = 32
+    PLAN_EE_STEP_SIZE = 0.08
+    PLAN_EE_NEAR_RADIUS = 0.18
+    PLAN_EE_GOAL_TOLERANCE = 0.05
+    PLAN_EE_EDGE_CHECK_STEP = 0.01
+    PLAN_EE_RESAMPLE_SPACING = 0.03
+    PLAN_EE_MAX_ITER = 5000
 
     VIS_PYBULLET = True
     VIS_PYBULLET_STEPS = ["init-config", "nearest-region", "plan"]
@@ -201,6 +213,18 @@ class ExperimentParameters:
             endpoint_fix_radius=cls.PLAN_ENDPOINT_FIX_RADIUS,
             endpoint_fix_step=cls.PLAN_ENDPOINT_FIX_STEP,
             init_config_npz=cls.PLAN_INIT_CONFIG_NPZ,
+            ee_min_clearance=cls.PLAN_EE_MIN_CLEARANCE,
+            ee_target_sdf=cls.PLAN_EE_TARGET_SDF,
+            ee_backtrack_init_step=cls.PLAN_EE_BACKTRACK_INIT_STEP,
+            ee_backtrack_min_step=cls.PLAN_EE_BACKTRACK_MIN_STEP,
+            ee_backtrack_shrink=cls.PLAN_EE_BACKTRACK_SHRINK,
+            ee_backtrack_max_iters=cls.PLAN_EE_BACKTRACK_MAX_ITERS,
+            ee_step_size=cls.PLAN_EE_STEP_SIZE,
+            ee_near_radius=cls.PLAN_EE_NEAR_RADIUS,
+            ee_goal_tolerance=cls.PLAN_EE_GOAL_TOLERANCE,
+            ee_edge_check_step=cls.PLAN_EE_EDGE_CHECK_STEP,
+            ee_resample_spacing=cls.PLAN_EE_RESAMPLE_SPACING,
+            ee_max_iter=cls.PLAN_EE_MAX_ITER,
             output_json=cls.PLAN_OUTPUT_JSON,
             output_png=cls.PLAN_OUTPUT_PNG,
         )
@@ -293,6 +317,53 @@ class ExperimentRunner:
 
     def parse_vec3(self, text: str) -> np.ndarray:
         return self._parse_vec3(text)
+
+    def load_init_config(self, npz_path: str | None = None) -> dict | None:
+        path = Path(npz_path or self.init_config_settings.output_npz)
+        if not path.exists():
+            return None
+        with np.load(path) as data:
+            payload = {}
+            for key in data.files:
+                value = data[key]
+                if isinstance(value, np.ndarray):
+                    payload[key] = np.array(value)
+                else:
+                    payload[key] = value
+        payload["path"] = str(path)
+        return payload
+
+    def move_robot_base_to_position(
+        self,
+        robot: JakaRobot,
+        target_base_pb: np.ndarray,
+        q_seed: np.ndarray | None = None,
+        max_iters: int = 6,
+    ) -> np.ndarray:
+        if q_seed is None:
+            q, _ = robot.get_joint_state()
+        else:
+            q = np.asarray(q_seed, dtype=float).copy()
+            robot.set_joint_state(q, dq=np.zeros_like(q))
+        n_base = min(3, len(robot.prismatic_joints), q.shape[0])
+        if n_base <= 0:
+            return q
+        target = np.asarray(target_base_pb, dtype=float).reshape(3)
+        for _ in range(max(int(max_iters), 1)):
+            base_pos, _ = robot.get_robobase_pose()
+            delta = target - np.asarray(base_pos, dtype=float).reshape(3)
+            if np.linalg.norm(delta) < 1e-4:
+                break
+            for i in range(n_base):
+                q[i] = float(q[i] + delta[i])
+                joint_index = int(robot.active_joints[i])
+                info = p.getJointInfo(robot.body_id, joint_index)
+                lo = float(info[8])
+                hi = float(info[9])
+                if hi > lo:
+                    q[i] = float(np.clip(q[i], lo, hi))
+            robot.set_joint_state(q, dq=np.zeros_like(q))
+        return q
 
     def pb2sdf(self, pts_pybullet: np.ndarray) -> np.ndarray:
         pts = np.asarray(pts_pybullet, dtype=float).reshape(-1, 3)
@@ -551,10 +622,13 @@ class ExperimentRunner:
         if not (ExperimentParameters.VIS_PYBULLET and "nearest-region" in ExperimentParameters.VIS_PYBULLET_STEPS):
             return
         weld_point_pb = np.asarray(weld_points_pb[0], dtype=float)
+        init_cfg = self.load_init_config()
+        robot_q = None if init_cfg is None else np.asarray(init_cfg.get("q_best"), dtype=float).reshape(-1)
         self.open_scene(
             ExperimentConfig(),
             load_robot=True,
             load_workpiece=True,
+            robot_q=robot_q,
             camera_target=weld_point_pb.tolist(),
         )
         for idx, wp in enumerate(np.asarray(weld_points_pb, dtype=float).reshape(-1, 3)):
@@ -634,16 +708,30 @@ class ExperimentRunner:
 
     def show_plan_path(
         self,
-        pts: np.ndarray,
-        start: np.ndarray,
-        goal: np.ndarray,
+        base_pts_pb: np.ndarray,
+        start_pb: np.ndarray,
+        goal_pb: np.ndarray,
         method: str,
         d_path: np.ndarray,
         path: list[np.ndarray],
+        *,
+        robot_q: np.ndarray | None = None,
+        ee_pts_pb: np.ndarray | None = None,
+        ee_d_path: np.ndarray | None = None,
+        weld_start_pb: np.ndarray | None = None,
+        retreat_pts_pb: np.ndarray | None = None,
+        retreat_goal_pb: np.ndarray | None = None,
     ) -> None:
         if not (ExperimentParameters.VIS_PYBULLET and "plan" in ExperimentParameters.VIS_PYBULLET_STEPS):
             return
-        self.open_scene(ExperimentConfig(), load_robot=True, load_workpiece=True)
+        robot, _ = self.open_scene(
+            ExperimentConfig(),
+            load_robot=True,
+            load_workpiece=True,
+            robot_q=None if robot_q is None else np.asarray(robot_q, dtype=float),
+            camera_target=np.asarray(goal_pb, dtype=float).reshape(3).tolist(),
+        )
+        pts = np.asarray(base_pts_pb, dtype=float).reshape(-1, 3)
         for i in range(len(pts) - 1):
             p.addUserDebugLine(
                 pts[i].tolist(), pts[i + 1].tolist(),
@@ -652,8 +740,8 @@ class ExperimentRunner:
         if pts.shape[0] > 0:
             c_path = np.full((pts.shape[0], 3), [0.1, 0.5, 1.0])
             p.addUserDebugPoints(pts.tolist(), c_path.tolist(), pointSize=5)
-        start_pb = self.sdf2pb(start.reshape(1, 3)).reshape(3)
-        goal_pb = self.sdf2pb(goal.reshape(1, 3)).reshape(3)
+        start_pb = np.asarray(start_pb, dtype=float).reshape(3)
+        goal_pb = np.asarray(goal_pb, dtype=float).reshape(3)
         self.create_sphere_marker(start_pb, 0.02, (0.1, 0.9, 0.2, 0.9))
         self.create_sphere_marker(goal_pb, 0.02, (0.95, 0.15, 0.15, 0.9))
         p.addUserDebugText(
@@ -668,6 +756,56 @@ class ExperimentRunner:
             f"{method.upper()} path: {len(path)} pts, min SDF={float(np.min(d_path))*1000:.1f}mm",
             [0.0, -0.3, 0.5], [0.1, 0.1, 0.1], textSize=1.2,
         )
+        if robot is not None:
+            base_pos, _ = robot.get_robobase_pose()
+            self.create_sphere_marker(base_pos, 0.025, (1.0, 0.5, 0.0, 0.9))
+            p.addUserDebugText(
+                "robobase@goal", (base_pos + np.array([0, 0, 0.06])).tolist(),
+                [0.8, 0.35, 0.0], textSize=1.1,
+            )
+        if weld_start_pb is not None:
+            weld_start_pb = np.asarray(weld_start_pb, dtype=float).reshape(3)
+            self.create_sphere_marker(weld_start_pb, 0.014, (0.95, 0.1, 0.1, 0.9))
+            p.addUserDebugText(
+                "weld-start", (weld_start_pb + np.array([0, 0, 0.03])).tolist(),
+                [0.8, 0.1, 0.1], textSize=0.95,
+            )
+        if retreat_pts_pb is not None:
+            retreat_pts = np.asarray(retreat_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(retreat_pts) - 1):
+                p.addUserDebugLine(
+                    retreat_pts[i].tolist(), retreat_pts[i + 1].tolist(),
+                    [0.8, 0.2, 0.8], lineWidth=2.0,
+                )
+            p.addUserDebugPoints(
+                retreat_pts.tolist(),
+                np.full((retreat_pts.shape[0], 3), [0.8, 0.2, 0.8]).tolist(),
+                pointSize=5,
+            )
+        if retreat_goal_pb is not None:
+            retreat_goal_pb = np.asarray(retreat_goal_pb, dtype=float).reshape(3)
+            self.create_sphere_marker(retreat_goal_pb, 0.016, (0.7, 0.0, 0.9, 0.95))
+            p.addUserDebugText(
+                "retreat-goal", (retreat_goal_pb + np.array([0, 0, 0.03])).tolist(),
+                [0.5, 0.0, 0.7], textSize=0.95,
+            )
+        if ee_pts_pb is not None:
+            ee_pts = np.asarray(ee_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(ee_pts) - 1):
+                p.addUserDebugLine(
+                    ee_pts[i].tolist(), ee_pts[i + 1].tolist(),
+                    [0.95, 0.75, 0.1], lineWidth=2.4,
+                )
+            p.addUserDebugPoints(
+                ee_pts.tolist(),
+                np.full((ee_pts.shape[0], 3), [0.95, 0.75, 0.1]).tolist(),
+                pointSize=5,
+            )
+            if ee_d_path is not None and len(ee_d_path) > 0:
+                p.addUserDebugText(
+                    f"EE path: {ee_pts.shape[0]} pts, min SDF={float(np.min(ee_d_path))*1000:.1f}mm",
+                    [0.0, -0.36, 0.45], [0.1, 0.1, 0.1], textSize=1.0,
+                )
         self.wait()
 
     def run_step(self, step_name: str) -> None:
@@ -1782,10 +1920,69 @@ class PlannerExperiment:
                 arr = arr[: i + 1] + arr[j:]
         return arr
 
+    @staticmethod
+    def _normalize(vec: np.ndarray) -> np.ndarray:
+        arr = np.asarray(vec, dtype=float).reshape(3)
+        norm = float(np.linalg.norm(arr))
+        if norm < 1e-12:
+            return np.zeros(3, dtype=float)
+        return arr / norm
+
+    def _gradient_backtrack_escape(
+        self,
+        field,
+        start_sdf: np.ndarray,
+        kind: str,
+        *,
+        target_sdf: float,
+        init_step: float,
+        min_step: float,
+        shrink: float,
+        max_iters: int,
+    ) -> tuple[list[np.ndarray], np.ndarray, np.ndarray]:
+        cur = np.asarray(start_sdf, dtype=float).reshape(3)
+        vals, grads = field.query_with_gradient(cur.reshape(1, 3).astype(np.float32), kind=kind)
+        cur_val = float(np.asarray(vals, dtype=float).reshape(-1)[0])
+        cur_grad = np.asarray(grads, dtype=float).reshape(-1, 3)[0]
+        path = [cur.copy()]
+        val_hist = [cur_val]
+        if cur_val >= float(target_sdf):
+            return path, np.asarray(val_hist, dtype=float), cur.copy()
+        for _ in range(max(int(max_iters), 1)):
+            if cur_val >= float(target_sdf):
+                break
+            direction = self._normalize(cur_grad)
+            if np.linalg.norm(direction) < 1e-12:
+                direction = self._normalize(self.runner.estimate_surface_normal(field, cur, kind, eps=0.002))
+            if np.linalg.norm(direction) < 1e-12:
+                break
+            step = max(float(init_step), float(target_sdf) - cur_val)
+            accepted = False
+            while step >= float(min_step):
+                cand = cur + step * direction
+                vals_c, grads_c = field.query_with_gradient(cand.reshape(1, 3).astype(np.float32), kind=kind)
+                cand_val = float(np.asarray(vals_c, dtype=float).reshape(-1)[0])
+                if cand_val > cur_val + 1e-6:
+                    cur = cand
+                    cur_val = cand_val
+                    cur_grad = np.asarray(grads_c, dtype=float).reshape(-1, 3)[0]
+                    path.append(cur.copy())
+                    val_hist.append(cur_val)
+                    accepted = True
+                    break
+                step *= float(shrink)
+            if not accepted:
+                break
+        return path, np.asarray(val_hist, dtype=float), cur.copy()
+
     def run(self) -> None:
         args = self.settings
         field = self.runner.load_field(args.sdf_npz)
         kind = self.runner.resolve_kind(field, args.kind)
+        init_cfg = self.runner.load_init_config(getattr(args, "init_config_npz", None))
+        q_best = None if init_cfg is None else np.asarray(init_cfg.get("q_best"), dtype=float).reshape(-1)
+        if q_best is not None:
+            print(f"[plan] using init-config from {init_cfg.get('path')}")
 
         nearest_region_as_goal = bool(getattr(args, "nearest_region_as_goal", ExperimentParameters.PLAN_NEAREST_REGION_AS_GOAL))
         nearest_json_path = getattr(args, "nearest_region_json", None) or ExperimentParameters.PLAN_NEAREST_REGION_JSON
@@ -1799,6 +1996,8 @@ class PlannerExperiment:
             try:
                 cfg = ExperimentConfig()
                 robot, _ = self.runner.make_robot_and_workpiece(cfg)
+                if q_best is not None:
+                    robot.set_joint_state(q_best, dq=np.zeros_like(q_best))
                 base_pos, _ = robot.get_robobase_pose()
                 start_pb = np.asarray(base_pos, dtype=float)
                 start = self.runner.pb2sdf(start_pb).reshape(3)
@@ -1914,6 +2113,126 @@ class PlannerExperiment:
         pts_sdf = np.asarray(path, dtype=float)
         d_path = self.runner.query_field(field, pts_sdf, kind=kind, safe_oob=True)
         pts = self.runner.sdf2pb(pts_sdf)
+        start_pb_used = self.runner.sdf2pb(np.asarray(start, dtype=float).reshape(1, 3)).reshape(3)
+        goal_pb_used = self.runner.sdf2pb(np.asarray(goal, dtype=float).reshape(1, 3)).reshape(3)
+
+        q_plan_final = None
+        ee_path_pb = None
+        ee_d_path = None
+        weld_start_pb = None
+        retreat_path_pb = None
+        retreat_goal_pb = None
+        retreat_vals = None
+        if Path(nearest_json_path).exists():
+            nr_data = json.loads(Path(nearest_json_path).read_text(encoding="utf-8"))
+            weld_start_raw = nr_data.get("weld_start_point")
+            if weld_start_raw is not None:
+                weld_start_pb = np.asarray(weld_start_raw, dtype=float).reshape(3)
+        if q_best is not None:
+            p.connect(p.DIRECT)
+            try:
+                cfg = ExperimentConfig()
+                robot, workpiece = self.runner.make_robot_and_workpiece(cfg)
+                q_plan_final = self.runner.move_robot_base_to_position(robot, goal_pb_used, q_seed=q_best)
+                base_after_pb, _ = robot.get_robobase_pose()
+                ee_start_pb, ee_start_quat = robot.get_ee_pose()
+                print(f"[plan] robobase moved to PB={np.asarray(base_after_pb, dtype=float).tolist()}")
+                if weld_start_pb is not None:
+                    weld_start_sdf = self.runner.pb2sdf(weld_start_pb).reshape(3)
+                    retreat_path_sdf, retreat_vals, retreat_goal_sdf = self._gradient_backtrack_escape(
+                        field,
+                        weld_start_sdf,
+                        kind,
+                        target_sdf=float(getattr(args, "ee_target_sdf", ExperimentParameters.PLAN_EE_TARGET_SDF)),
+                        init_step=float(getattr(args, "ee_backtrack_init_step", ExperimentParameters.PLAN_EE_BACKTRACK_INIT_STEP)),
+                        min_step=float(getattr(args, "ee_backtrack_min_step", ExperimentParameters.PLAN_EE_BACKTRACK_MIN_STEP)),
+                        shrink=float(getattr(args, "ee_backtrack_shrink", ExperimentParameters.PLAN_EE_BACKTRACK_SHRINK)),
+                        max_iters=int(getattr(args, "ee_backtrack_max_iters", ExperimentParameters.PLAN_EE_BACKTRACK_MAX_ITERS)),
+                    )
+                    retreat_path_pb = self.runner.sdf2pb(np.asarray(retreat_path_sdf, dtype=float))
+                    retreat_goal_pb = self.runner.sdf2pb(np.asarray(retreat_goal_sdf, dtype=float).reshape(1, 3)).reshape(3)
+                    print(
+                        f"[plan] weld-start escape: start_sdf={float(retreat_vals[0]):.4f}m -> "
+                        f"end_sdf={float(retreat_vals[-1]):.4f}m, steps={len(retreat_path_sdf)}"
+                    )
+
+                    ee_start_sdf = self.runner.pb2sdf(ee_start_pb).reshape(3)
+                    ee_search_goal = np.asarray(retreat_goal_sdf, dtype=float).reshape(3)
+                    ee_clearance = float(getattr(args, "ee_min_clearance", ExperimentParameters.PLAN_EE_MIN_CLEARANCE))
+                    bmin_ee = np.maximum(
+                        np.minimum(ee_start_sdf, ee_search_goal) - 0.20,
+                        np.asarray(field.bbox_min, dtype=float) + float(args.bound_margin),
+                    )
+                    bmax_ee = np.minimum(
+                        np.maximum(ee_start_sdf, ee_search_goal) + 0.20,
+                        np.asarray(field.bbox_max, dtype=float) - float(args.bound_margin),
+                    )
+                    ee_rrt_start = ee_start_sdf.copy()
+                    ee_rrt_goal = ee_search_goal.copy()
+                    if bool(args.auto_fix_endpoints):
+                        ee_rrt_start, _ = self.runner.auto_fix_point_if_infeasible(
+                            field,
+                            ee_rrt_start,
+                            bmin_ee,
+                            bmax_ee,
+                            kind,
+                            ee_clearance,
+                            float(args.endpoint_fix_radius),
+                            float(args.endpoint_fix_step),
+                        )
+                        ee_rrt_goal, ok_goal_ee = self.runner.auto_fix_point_if_infeasible(
+                            field,
+                            ee_rrt_goal,
+                            bmin_ee,
+                            bmax_ee,
+                            kind,
+                            ee_clearance,
+                            float(args.endpoint_fix_radius),
+                            float(args.endpoint_fix_step),
+                        )
+                        if not ok_goal_ee:
+                            raise RuntimeError("末端 retreat 目标点在邻域内无法满足 EE SDF 阈值。")
+                    ee_path_sdf = self._rrt_star_plan(
+                        field=field,
+                        start=ee_rrt_start,
+                        goal=ee_rrt_goal,
+                        bounds_min=bmin_ee,
+                        bounds_max=bmax_ee,
+                        kind=kind,
+                        clearance=ee_clearance,
+                        step_size=float(getattr(args, "ee_step_size", ExperimentParameters.PLAN_EE_STEP_SIZE)),
+                        near_radius=float(getattr(args, "ee_near_radius", ExperimentParameters.PLAN_EE_NEAR_RADIUS)),
+                        goal_sample_prob=float(args.goal_sample_prob),
+                        max_iter=int(getattr(args, "ee_max_iter", ExperimentParameters.PLAN_EE_MAX_ITER)),
+                        edge_step=float(getattr(args, "ee_edge_check_step", ExperimentParameters.PLAN_EE_EDGE_CHECK_STEP)),
+                        goal_tol=float(getattr(args, "ee_goal_tolerance", ExperimentParameters.PLAN_EE_GOAL_TOLERANCE)),
+                    )
+                    if not ee_path_sdf:
+                        raise RuntimeError("末端 RRT 路径未找到。")
+                    ee_path_sdf = self._shortcut_smooth(
+                        ee_path_sdf,
+                        field=field,
+                        kind=kind,
+                        clearance=ee_clearance,
+                        edge_step=float(getattr(args, "ee_edge_check_step", ExperimentParameters.PLAN_EE_EDGE_CHECK_STEP)),
+                        iters=int(args.smooth_iters),
+                    )
+                    ee_path_sdf = self._resample_path(
+                        ee_path_sdf,
+                        float(getattr(args, "ee_resample_spacing", ExperimentParameters.PLAN_EE_RESAMPLE_SPACING)),
+                    )
+                    ee_path_sdf_arr = np.asarray(ee_path_sdf, dtype=float)
+                    ee_d_path = self.runner.query_field(field, ee_path_sdf_arr, kind=kind, safe_oob=True)
+                    ee_path_pb = self.runner.sdf2pb(ee_path_sdf_arr)
+                    print(
+                        f"[plan] ee path: {len(ee_path_sdf)} waypoints, "
+                        f"min_sdf={float(np.min(ee_d_path)):.4f}m, start={np.asarray(ee_start_pb, dtype=float).tolist()}, "
+                        f"goal={np.asarray(retreat_goal_pb, dtype=float).tolist()}"
+                    )
+                    _ = ee_start_quat
+                    _ = workpiece
+            finally:
+                p.disconnect()
 
         out_json = Path(args.output_json)
         self.runner.ensure_parent(out_json)
@@ -1922,18 +2241,37 @@ class PlannerExperiment:
             "kind": kind,
             "n_waypoints": int(len(path)),
             "min_sdf_on_waypoints": float(np.min(d_path)),
-            "start_used": self.runner.sdf2pb(np.asarray(start, dtype=float).reshape(1, 3)).reshape(3).tolist(),
-            "goal_used": self.runner.sdf2pb(np.asarray(goal, dtype=float).reshape(1, 3)).reshape(3).tolist(),
+            "start_used": start_pb_used.tolist(),
+            "goal_used": goal_pb_used.tolist(),
             "via_point": None if via is None else self.runner.sdf2pb(np.asarray(via, dtype=float).reshape(1, 3)).reshape(3).tolist(),
             "path": pts.tolist(),
+            "init_config_used": None if q_best is None else {
+                "path": str(init_cfg.get("path")),
+                "q_best": q_best.tolist(),
+            },
+            "weld_start_point": None if weld_start_pb is None else weld_start_pb.tolist(),
+            "retreat_path": None if retreat_path_pb is None else np.asarray(retreat_path_pb, dtype=float).tolist(),
+            "retreat_sdf_values": None if retreat_vals is None else np.asarray(retreat_vals, dtype=float).tolist(),
+            "retreat_goal": None if retreat_goal_pb is None else retreat_goal_pb.tolist(),
+            "ee_path": None if ee_path_pb is None else np.asarray(ee_path_pb, dtype=float).tolist(),
+            "ee_min_sdf_on_waypoints": None if ee_d_path is None else float(np.min(ee_d_path)),
+            "robot_q_at_goal": None if q_plan_final is None else np.asarray(q_plan_final, dtype=float).tolist(),
         }
         out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
         fig = plt.figure(figsize=(7, 5.5))
         ax = fig.add_subplot(111, projection="3d")
         ax.plot(pts[:, 0], pts[:, 1], pts[:, 2], "-o", ms=2.8, lw=1.4, c="dodgerblue")
-        ax.scatter([start[0]], [start[1]], [start[2]], c="green", s=50, label="start")
-        ax.scatter([goal[0]], [goal[1]], [goal[2]], c="red", s=50, label="goal")
+        ax.scatter([start_pb_used[0]], [start_pb_used[1]], [start_pb_used[2]], c="green", s=50, label="base start")
+        ax.scatter([goal_pb_used[0]], [goal_pb_used[1]], [goal_pb_used[2]], c="red", s=50, label="base goal")
+        if weld_start_pb is not None:
+            ax.scatter([weld_start_pb[0]], [weld_start_pb[1]], [weld_start_pb[2]], c="crimson", s=42, label="weld start")
+        if retreat_path_pb is not None:
+            retreat_arr = np.asarray(retreat_path_pb, dtype=float)
+            ax.plot(retreat_arr[:, 0], retreat_arr[:, 1], retreat_arr[:, 2], "-o", ms=2.2, lw=1.2, c="orchid", label="gradient retreat")
+        if ee_path_pb is not None:
+            ee_arr = np.asarray(ee_path_pb, dtype=float)
+            ax.plot(ee_arr[:, 0], ee_arr[:, 1], ee_arr[:, 2], "-o", ms=2.0, lw=1.2, c="goldenrod", label="EE RRT")
         ax.set_title(f"SDF-constrained {method.upper()} path")
         ax.legend()
         out_png = Path(args.output_png)
@@ -1941,7 +2279,20 @@ class PlannerExperiment:
         fig.savefig(out_png, dpi=140)
         plt.close(fig)
         print(f"[planner] 完成，结果写入: {out_json}")
-        self.runner.show_plan_path(pts, start, goal, method, d_path, path)
+        self.runner.show_plan_path(
+            pts,
+            start_pb_used,
+            goal_pb_used,
+            method,
+            d_path,
+            path,
+            robot_q=q_plan_final,
+            ee_pts_pb=ee_path_pb,
+            ee_d_path=ee_d_path,
+            weld_start_pb=weld_start_pb,
+            retreat_pts_pb=retreat_path_pb,
+            retreat_goal_pb=retreat_goal_pb,
+        )
 
 
 if __name__ == "__main__":
