@@ -16,7 +16,7 @@
     -0.7682396759675526,
     0.6401623228738479
   ],
-  "total_feasible": 3634,
+  "total_feasible": 3596,
   "n_components": 4,
   "top_k": [
     {
@@ -101,9 +101,9 @@
     }
   ],
   "params": {
-    "bbox_radius": 1.0047602176549009,
+    "bbox_radius": 1.0054155299178476,
     "bbox_margin": 0.1,
-    "effective_clearance": 1.104760217654901,
+    "effective_clearance": 1.1054155299178476,
     "require_above_weld": true
   }
 }
