@@ -64,6 +64,8 @@ class ExperimentParameters:
     NEAR_OCCUPANCY_NPZ = None
     NEAR_OCCUPANCY_MARGIN = 0.0
     NEAR_RAY_STEP = 0.02
+    NEAR_GRAD_SIDE_DOT_EPS = 0.0
+    NEAR_GRAD_SIDE_MIN_RATIO = 0.6
     NEAR_REPRESENTATIVE_STRATEGY = "centroid"
     NEAR_MAX_RAYS_TO_VIS = 12
     NEAR_TOPK_RAY_SAMPLE_STRIDE = 2
@@ -149,6 +151,8 @@ class ExperimentParameters:
             occupancy_npz=cls.NEAR_OCCUPANCY_NPZ,
             occupancy_margin=cls.NEAR_OCCUPANCY_MARGIN,
             ray_step=cls.NEAR_RAY_STEP,
+            grad_side_dot_eps=cls.NEAR_GRAD_SIDE_DOT_EPS,
+            grad_side_min_ratio=cls.NEAR_GRAD_SIDE_MIN_RATIO,
             representative_strategy=cls.NEAR_REPRESENTATIVE_STRATEGY,
             max_rays_to_vis=cls.NEAR_MAX_RAYS_TO_VIS,
             topk_ray_sample_stride=cls.NEAR_TOPK_RAY_SAMPLE_STRIDE,
@@ -922,6 +926,39 @@ class NearestRegionExperiment:
             "votes": 0,
             "total_occlusion_length": 0.0,
             "mean_rep_distance_to_seam": 0.0,
+            "same_side_positive_ratio": 0.0,
+            "same_side_mean_dot": 0.0,
+            "same_side_pass": True,
+        }
+
+    @staticmethod
+    def _normalize_rows(v: np.ndarray) -> np.ndarray:
+        arr = np.asarray(v, dtype=float).reshape(-1, 3)
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        return arr / np.maximum(norms, 1e-12)
+
+    def _component_same_side_stats(
+        self,
+        rep_sdf: np.ndarray,
+        seam_points: np.ndarray,
+        seam_gradients: np.ndarray,
+        *,
+        dot_eps: float,
+        min_ratio: float,
+    ) -> dict:
+        rep = np.asarray(rep_sdf, dtype=float).reshape(1, 3)
+        seam_pts = np.asarray(seam_points, dtype=float).reshape(-1, 3)
+        grads = self._normalize_rows(seam_gradients)
+        dirs = self._normalize_rows(rep - seam_pts)
+        dots = np.sum(dirs * grads, axis=1)
+        positive = dots > float(dot_eps)
+        positive_ratio = float(np.mean(positive)) if dots.size else 0.0
+        return {
+            "dots": dots.tolist(),
+            "positive_mask": positive.astype(int).tolist(),
+            "positive_ratio": positive_ratio,
+            "mean_dot": float(np.mean(dots)) if dots.size else 0.0,
+            "passed": bool(positive_ratio >= float(min_ratio)),
         }
 
     def _rank_topk_points(
@@ -945,8 +982,6 @@ class NearestRegionExperiment:
         prelim_score = seam_dist - 0.20 * np.asarray(comp_vals, dtype=float)
         prelim_idx = np.argsort(prelim_score)[:candidate_pool]
         ranked: list[dict] = []
-        above_min_dz = float(getattr(args, "above_weld_min_dz", 0.0))
-        require_above = bool(getattr(args, "require_above_weld", False))
         for idx in prelim_idx:
             pt = np.asarray(comp_xyz[idx], dtype=float)
             clearance = float(comp_vals[idx])
@@ -955,10 +990,7 @@ class NearestRegionExperiment:
                 for wp in seam_ray_pts
             ]
             avg_ray = float(np.mean(ray_costs)) if ray_costs else 0.0
-            z_violation = 0.0
-            if require_above:
-                z_violation = float(np.mean(np.maximum(seam_ray_pts[:, 2] + above_min_dz - pt[2], 0.0)))
-            score = float(seam_dist[idx] + 3.0 * avg_ray + 10.0 * z_violation - 0.30 * clearance)
+            score = float(seam_dist[idx] + 3.0 * avg_ray - 0.30 * clearance)
             ranked.append(
                 {
                     "point_sdf": pt.tolist(),
@@ -967,7 +999,6 @@ class NearestRegionExperiment:
                     "distance_to_seam": float(seam_dist[idx]),
                     "distance_value": clearance,
                     "avg_occlusion_length": avg_ray,
-                    "z_violation": z_violation,
                     "min_kernel_value": None,
                 }
             )
@@ -1003,23 +1034,15 @@ class NearestRegionExperiment:
             int(getattr(args, "seam_samples", ExperimentParameters.NEAR_SEAM_SAMPLES)),
         )
         seam_points = self.runner.pb2sdf(seam_points_pb)
-        surface_normals = np.vstack(
-            [
-                self.runner.estimate_surface_normal(
-                    field,
-                    seam_pt,
-                    kind,
-                    eps=float(getattr(args, "surface_normal_eps", ExperimentParameters.NEAR_SURFACE_NORMAL_EPS)),
-                )
-                for seam_pt in seam_points
-            ]
+        d_seam, seam_gradients = field.query_with_gradient(
+            np.asarray(seam_points, dtype=np.float32),
+            kind=kind,
         )
+        d_seam = np.asarray(d_seam, dtype=float).reshape(-1)
+        seam_gradients = np.asarray(seam_gradients, dtype=float).reshape(-1, 3)
+        surface_normals = self._normalize_rows(seam_gradients)
         surface_normals_pb = self.runner.sdf_dirs_to_pb(surface_normals)
-        surface_normals_pb /= np.maximum(
-            np.linalg.norm(surface_normals_pb, axis=1, keepdims=True),
-            1e-12,
-        )
-        d_seam = self.runner.query_field(field, seam_points, kind=kind)
+        surface_normals_pb = self._normalize_rows(surface_normals_pb)
         print(
             f"[nearest] seam start/end PB={weld_start_pb.tolist()} -> {weld_goal_pb.tolist()}  "
             f"samples={seam_points.shape[0]}"
@@ -1030,7 +1053,6 @@ class NearestRegionExperiment:
         )
 
         require_above = bool(getattr(args, "require_above_weld", ExperimentParameters.NEAR_REQUIRE_ABOVE_WELD))
-        above_min_dz = float(getattr(args, "above_weld_min_dz", ExperimentParameters.NEAR_ABOVE_WELD_MIN_DZ))
 
         bbox_radius = 0.0
         kernel_npz_path = getattr(args, "kernel_npz", None)
@@ -1077,6 +1099,7 @@ class NearestRegionExperiment:
         selected_component_id: int | None = None
         component_summaries: list[dict] = []
         ray_segments: list[dict] = []
+        vote_candidates: list[dict] = []
         if n_feasible > 0:
             labels, n_components = ndimage_label(mask)
             print(f"[nearest] connected components: {n_components}")
@@ -1105,7 +1128,26 @@ class NearestRegionExperiment:
                         seam_goal,
                     )[0]
                 )
+                side_stats = self._component_same_side_stats(
+                    np.asarray(summary["representative_sdf"], dtype=float),
+                    seam_points,
+                    seam_gradients,
+                    dot_eps=float(getattr(args, "grad_side_dot_eps", ExperimentParameters.NEAR_GRAD_SIDE_DOT_EPS)),
+                    min_ratio=float(getattr(args, "grad_side_min_ratio", ExperimentParameters.NEAR_GRAD_SIDE_MIN_RATIO)),
+                )
+                summary["same_side_positive_ratio"] = float(side_stats["positive_ratio"])
+                summary["same_side_mean_dot"] = float(side_stats["mean_dot"])
+                summary["same_side_positive_mask"] = side_stats["positive_mask"]
+                summary["same_side_dots"] = side_stats["dots"]
+                summary["same_side_pass"] = bool(side_stats["passed"])
                 component_summaries.append(summary)
+
+            passed_components = [comp for comp in component_summaries if bool(comp["same_side_pass"])]
+            vote_candidates = passed_components if passed_components else component_summaries
+            if passed_components:
+                print(f"[nearest] gradient same-side filter kept {len(passed_components)} / {len(component_summaries)} components")
+            else:
+                print("[nearest] gradient same-side filter rejected all components, fallback to all")
 
             vote_stats: dict[int, dict[str, float]] = {
                 int(comp["component_id"]): {
@@ -1122,15 +1164,12 @@ class NearestRegionExperiment:
                 best_key = None
                 best_occ = None
                 best_rep = None
-                for comp in component_summaries:
+                for comp in vote_candidates:
                     comp_id = int(comp["component_id"])
                     rep = np.asarray(comp["representative_sdf"], dtype=float)
                     occ_len = self._ray_occupied_length(occ_field, seam_pt, rep, float(getattr(args, "ray_step", 0.02)))
                     dist = float(np.linalg.norm(rep - seam_pt))
-                    z_penalty = 0.0
-                    if require_above:
-                        z_penalty = max(0.0, seam_pt[2] + above_min_dz - rep[2])
-                    total_cost = occ_len + 5.0 * z_penalty
+                    total_cost = occ_len
                     vote_stats[comp_id]["per_sample_occlusion_lengths"].append(float(occ_len))
                     vote_stats[comp_id]["per_sample_total_costs"].append(float(total_cost))
                     key = (total_cost, dist)
@@ -1156,6 +1195,7 @@ class NearestRegionExperiment:
 
             component_summaries.sort(
                 key=lambda comp: (
+                    0 if bool(comp.get("same_side_pass", True)) else 1,
                     -vote_stats[int(comp["component_id"])]["votes"],
                     vote_stats[int(comp["component_id"])]["total_occlusion_length"],
                     vote_stats[int(comp["component_id"])]["total_distance"],
@@ -1197,11 +1237,17 @@ class NearestRegionExperiment:
             "sampled_weld_points": seam_points_pb.tolist(),
             "sampled_weld_points_sdf": seam_points.tolist(),
             "sampled_sdf_values": np.asarray(d_seam, dtype=float).tolist(),
+            "sampled_gradients_sdf": seam_gradients.tolist(),
             "surface_normals_sdf": surface_normals.tolist(),
             "surface_normals_pb": surface_normals_pb.tolist(),
             "total_feasible": total_feasible,
             "n_components": n_components,
             "components_summary": component_summaries,
+            "gradient_side_filter": {
+                "dot_eps": float(getattr(args, "grad_side_dot_eps", ExperimentParameters.NEAR_GRAD_SIDE_DOT_EPS)),
+                "min_ratio": float(getattr(args, "grad_side_min_ratio", ExperimentParameters.NEAR_GRAD_SIDE_MIN_RATIO)),
+                "passed_component_ids": [int(comp["component_id"]) for comp in vote_candidates],
+            },
             "component_votes": [
                 {
                     "component_id": int(comp["component_id"]),
@@ -1209,6 +1255,9 @@ class NearestRegionExperiment:
                     "total_occlusion_length": float(comp["total_occlusion_length"]),
                     "mean_rep_distance_to_seam": float(comp["mean_rep_distance_to_seam"]),
                     "mean_total_cost": float(comp.get("mean_total_cost", 0.0)),
+                    "same_side_positive_ratio": float(comp.get("same_side_positive_ratio", 0.0)),
+                    "same_side_mean_dot": float(comp.get("same_side_mean_dot", 0.0)),
+                    "same_side_pass": bool(comp.get("same_side_pass", True)),
                 }
                 for comp in component_summaries
             ],
@@ -1233,6 +1282,8 @@ class NearestRegionExperiment:
                 "require_above_weld": require_above,
                 "occupancy_npz": str(occ_path),
                 "ray_step": float(getattr(args, "ray_step", 0.02)),
+                "grad_side_dot_eps": float(getattr(args, "grad_side_dot_eps", ExperimentParameters.NEAR_GRAD_SIDE_DOT_EPS)),
+                "grad_side_min_ratio": float(getattr(args, "grad_side_min_ratio", ExperimentParameters.NEAR_GRAD_SIDE_MIN_RATIO)),
             },
         }
         out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1245,9 +1296,10 @@ class NearestRegionExperiment:
         for comp in component_summaries:
             rep_pb = np.asarray(comp["representative_pb"], dtype=float)
             selected = selected_component_id is not None and int(comp["component_id"]) == int(selected_component_id)
+            passed = bool(comp.get("same_side_pass", True))
             ax.scatter(
                 [rep_pb[0]], [rep_pb[1]], [rep_pb[2]],
-                c="orange" if selected else "gray",
+                c="orange" if selected else ("gray" if passed else "crimson"),
                 s=60 if selected else 26,
                 alpha=0.95 if selected else 0.6,
             )
@@ -1272,10 +1324,11 @@ class NearestRegionExperiment:
             labels_bar = [f"C{comp['component_id']}" for comp in component_summaries]
             votes_bar = [float(comp["votes"]) for comp in component_summaries]
             occ_bar = [float(comp["total_occlusion_length"]) for comp in component_summaries]
+            ratio_bar = [float(comp.get("same_side_positive_ratio", 0.0)) for comp in component_summaries]
             y = np.arange(len(labels_bar))
             ax_bar.barh(y, votes_bar, color="steelblue", alpha=0.85)
-            for yi, (v, occ) in enumerate(zip(votes_bar, occ_bar)):
-                ax_bar.text(v + 0.05, yi, f"occ={occ:.3f}m", va="center", fontsize=8)
+            for yi, (v, occ, ratio) in enumerate(zip(votes_bar, occ_bar, ratio_bar)):
+                ax_bar.text(v + 0.05, yi, f"occ={occ:.3f}m  side={ratio:.2f}", va="center", fontsize=8)
             ax_bar.set_yticks(y, labels_bar)
             ax_bar.invert_yaxis()
             ax_bar.set_xlabel("votes")
