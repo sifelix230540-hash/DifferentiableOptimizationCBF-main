@@ -118,6 +118,8 @@ class ExperimentParameters:
     PLAN_EE_EDGE_CHECK_STEP = 0.01
     PLAN_EE_RESAMPLE_SPACING = 0.03
     PLAN_EE_MAX_ITER = 5000
+    PLAN_EE_BEZIER_SAMPLES_PER_SEG = 40
+    PLAN_EE_BEZIER_APPROACH_MIN_SDF = -1e-4
 
     VIS_PYBULLET = True
     VIS_PYBULLET_STEPS = ["init-config", "nearest-region", "plan"]
@@ -229,6 +231,8 @@ class ExperimentParameters:
             ee_edge_check_step=cls.PLAN_EE_EDGE_CHECK_STEP,
             ee_resample_spacing=cls.PLAN_EE_RESAMPLE_SPACING,
             ee_max_iter=cls.PLAN_EE_MAX_ITER,
+            ee_bezier_samples_per_seg=cls.PLAN_EE_BEZIER_SAMPLES_PER_SEG,
+            ee_bezier_approach_min_sdf=cls.PLAN_EE_BEZIER_APPROACH_MIN_SDF,
             output_json=cls.PLAN_OUTPUT_JSON,
             output_png=cls.PLAN_OUTPUT_PNG,
         )
@@ -722,9 +726,15 @@ class ExperimentRunner:
         robot_q: np.ndarray | None = None,
         ee_pts_pb: np.ndarray | None = None,
         ee_d_path: np.ndarray | None = None,
+        ee_smoothed_pts_pb: np.ndarray | None = None,
+        ee_smoothed_d_path: np.ndarray | None = None,
+        ee_control_points_pb: np.ndarray | None = None,
         weld_start_pb: np.ndarray | None = None,
         retreat_pts_pb: np.ndarray | None = None,
         retreat_goal_pb: np.ndarray | None = None,
+        approach_smoothed_pts_pb: np.ndarray | None = None,
+        approach_smoothed_d_path: np.ndarray | None = None,
+        approach_control_points_pb: np.ndarray | None = None,
     ) -> None:
         if not (ExperimentParameters.VIS_PYBULLET and "plan" in ExperimentParameters.VIS_PYBULLET_STEPS):
             return
@@ -809,6 +819,44 @@ class ExperimentRunner:
                 p.addUserDebugText(
                     f"EE path: {ee_pts.shape[0]} pts, min SDF={float(np.min(ee_d_path))*1000:.1f}mm",
                     [0.0, -0.36, 0.45], [0.1, 0.1, 0.1], textSize=1.0,
+                )
+        if ee_smoothed_pts_pb is not None:
+            ee_smooth = np.asarray(ee_smoothed_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(ee_smooth) - 1):
+                p.addUserDebugLine(
+                    ee_smooth[i].tolist(), ee_smooth[i + 1].tolist(),
+                    [0.0, 0.8, 0.8], lineWidth=2.2,
+                )
+            if ee_control_points_pb is not None:
+                cps = np.asarray(ee_control_points_pb, dtype=float).reshape(-1, 3)
+                p.addUserDebugPoints(
+                    cps.tolist(),
+                    np.full((cps.shape[0], 3), [0.0, 0.8, 0.8]).tolist(),
+                    pointSize=7,
+                )
+            if ee_smoothed_d_path is not None and len(ee_smoothed_d_path) > 0:
+                p.addUserDebugText(
+                    f"EE bezier: {ee_smooth.shape[0]} pts, min SDF={float(np.min(ee_smoothed_d_path))*1000:.1f}mm",
+                    [0.0, -0.41, 0.40], [0.1, 0.1, 0.1], textSize=1.0,
+                )
+        if approach_smoothed_pts_pb is not None:
+            app_smooth = np.asarray(approach_smoothed_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(app_smooth) - 1):
+                p.addUserDebugLine(
+                    app_smooth[i].tolist(), app_smooth[i + 1].tolist(),
+                    [0.95, 0.45, 0.0], lineWidth=2.0,
+                )
+            if approach_control_points_pb is not None:
+                cps = np.asarray(approach_control_points_pb, dtype=float).reshape(-1, 3)
+                p.addUserDebugPoints(
+                    cps.tolist(),
+                    np.full((cps.shape[0], 3), [0.95, 0.45, 0.0]).tolist(),
+                    pointSize=7,
+                )
+            if approach_smoothed_d_path is not None and len(approach_smoothed_d_path) > 0:
+                p.addUserDebugText(
+                    f"Approach bezier: {app_smooth.shape[0]} pts, min SDF={float(np.min(approach_smoothed_d_path))*1000:.1f}mm",
+                    [0.0, -0.46, 0.35], [0.1, 0.1, 0.1], textSize=0.95,
                 )
         self.wait()
 
@@ -2024,6 +2072,140 @@ class PlannerExperiment:
                 break
         return path, np.asarray(val_hist, dtype=float), cur.copy()
 
+    @staticmethod
+    def _polyline_length(points: np.ndarray) -> float:
+        pts = np.asarray(points, dtype=float).reshape(-1, 3)
+        if pts.shape[0] < 2:
+            return 0.0
+        return float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+
+    @staticmethod
+    def _sample_polyline_fraction(points: np.ndarray, fraction: float) -> np.ndarray:
+        pts = np.asarray(points, dtype=float).reshape(-1, 3)
+        if pts.shape[0] == 0:
+            return np.zeros(3, dtype=float)
+        if pts.shape[0] == 1:
+            return pts[0].copy()
+        frac = float(np.clip(fraction, 0.0, 1.0))
+        seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        total = float(np.sum(seg))
+        if total < 1e-12:
+            return pts[0].copy()
+        target = frac * total
+        acc = 0.0
+        for i, s in enumerate(seg):
+            if acc + float(s) >= target:
+                local = (target - acc) / max(float(s), 1e-12)
+                return pts[i] + local * (pts[i + 1] - pts[i])
+            acc += float(s)
+        return pts[-1].copy()
+
+    @staticmethod
+    def _eval_bezier(control_points: np.ndarray, n_samples: int) -> np.ndarray:
+        cps = np.asarray(control_points, dtype=float).reshape(-1, 3)
+        degree = cps.shape[0] - 1
+        ts = np.linspace(0.0, 1.0, max(int(n_samples), 2))
+        out = np.zeros((ts.shape[0], 3), dtype=float)
+        for i in range(degree + 1):
+            coeff = math.comb(degree, i) * ((1.0 - ts) ** (degree - i)) * (ts ** i)
+            out += coeff[:, None] * cps[i].reshape(1, 3)
+        return out
+
+    def _build_cubic_bezier_controls(self, path_pts: np.ndarray) -> np.ndarray:
+        pts = np.asarray(path_pts, dtype=float).reshape(-1, 3)
+        p0 = pts[0].copy()
+        p3 = pts[-1].copy()
+        if pts.shape[0] < 3:
+            chord = p3 - p0
+            return np.vstack([p0, p0 + chord / 3.0, p0 + 2.0 * chord / 3.0, p3])
+        p1 = self._sample_polyline_fraction(pts, 0.25)
+        p2 = self._sample_polyline_fraction(pts, 0.75)
+        return np.vstack([p0, p1, p2, p3])
+
+    def _build_quintic_approach_controls(
+        self,
+        path_pts: np.ndarray,
+        join_tangent: np.ndarray,
+    ) -> np.ndarray:
+        pts = np.asarray(path_pts, dtype=float).reshape(-1, 3)
+        q0 = pts[0].copy()
+        q5 = pts[-1].copy()
+        if pts.shape[0] < 3:
+            chord = q5 - q0
+            return np.vstack([
+                q0,
+                q0 + chord / 5.0,
+                q0 + 2.0 * chord / 5.0,
+                q0 + 3.0 * chord / 5.0,
+                q0 + 4.0 * chord / 5.0,
+                q5,
+            ])
+        total_len = self._polyline_length(pts)
+        chord_len = float(np.linalg.norm(q5 - q0))
+        t0 = self._normalize(join_tangent)
+        if np.linalg.norm(t0) < 1e-12:
+            t0 = self._normalize(pts[1] - pts[0])
+        t1 = self._normalize(pts[-1] - pts[-2])
+        handle0 = min(0.20 * total_len, 0.35 * chord_len) if chord_len > 1e-9 else 0.05
+        handle1 = min(0.14 * total_len, 0.25 * chord_len) if chord_len > 1e-9 else 0.04
+        q1 = q0 + handle0 * t0
+        q4 = q5 - handle1 * t1
+        s35 = self._sample_polyline_fraction(pts, 0.35)
+        s70 = self._sample_polyline_fraction(pts, 0.70)
+        q2 = 0.5 * q1 + 0.5 * s35
+        q3 = 0.5 * q4 + 0.5 * s70
+        return np.vstack([q0, q1, q2, q3, q4, q5])
+
+    def _smooth_ee_paths(
+        self,
+        field,
+        kind: str,
+        ee_path_sdf_arr: np.ndarray,
+        retreat_path_sdf_arr: np.ndarray,
+        *,
+        ee_clearance: float,
+        approach_min_sdf: float,
+        n_samples_per_seg: int,
+    ) -> dict:
+        result = {
+            "ee_controls_sdf": None,
+            "ee_smoothed_sdf": ee_path_sdf_arr.copy(),
+            "ee_smoothed_d": self.runner.query_field(field, ee_path_sdf_arr, kind=kind, safe_oob=True),
+            "approach_controls_sdf": None,
+            "approach_smoothed_sdf": retreat_path_sdf_arr[::-1].copy(),
+            "approach_smoothed_d": self.runner.query_field(
+                field,
+                retreat_path_sdf_arr[::-1],
+                kind=kind,
+                safe_oob=True,
+            ),
+        }
+        ee_raw = np.asarray(ee_path_sdf_arr, dtype=float).reshape(-1, 3)
+        if ee_raw.shape[0] >= 2:
+            ee_controls = self._build_cubic_bezier_controls(ee_raw)
+            ee_smooth = self._eval_bezier(ee_controls, n_samples_per_seg)
+            ee_d = self.runner.query_field(field, ee_smooth, kind=kind, safe_oob=True)
+            if float(np.min(ee_d)) >= float(ee_clearance):
+                result["ee_controls_sdf"] = ee_controls
+                result["ee_smoothed_sdf"] = ee_smooth
+                result["ee_smoothed_d"] = ee_d
+
+        approach_raw = np.asarray(retreat_path_sdf_arr[::-1], dtype=float).reshape(-1, 3)
+        if approach_raw.shape[0] >= 2:
+            if result["ee_controls_sdf"] is not None:
+                ee_controls = np.asarray(result["ee_controls_sdf"], dtype=float)
+                join_tangent = self._normalize(ee_controls[-1] - ee_controls[-2])
+            else:
+                join_tangent = self._normalize(approach_raw[1] - approach_raw[0])
+            app_controls = self._build_quintic_approach_controls(approach_raw, join_tangent)
+            app_smooth = self._eval_bezier(app_controls, n_samples_per_seg)
+            app_d = self.runner.query_field(field, app_smooth, kind=kind, safe_oob=True)
+            if float(np.min(app_d)) >= float(approach_min_sdf):
+                result["approach_controls_sdf"] = app_controls
+                result["approach_smoothed_sdf"] = app_smooth
+                result["approach_smoothed_d"] = app_d
+        return result
+
     def run(self) -> None:
         args = self.settings
         field = self.runner.load_field(args.sdf_npz)
@@ -2172,6 +2354,14 @@ class PlannerExperiment:
         retreat_path_pb = None
         retreat_goal_pb = None
         retreat_vals = None
+        retreat_path_sdf_arr = None
+        ee_path_sdf_arr = None
+        ee_smoothed_pb = None
+        ee_smoothed_d = None
+        ee_control_points_pb = None
+        approach_smoothed_pb = None
+        approach_smoothed_d = None
+        approach_control_points_pb = None
         if Path(nearest_json_path).exists():
             nr_data = json.loads(Path(nearest_json_path).read_text(encoding="utf-8"))
             weld_start_raw = nr_data.get("weld_start_point")
@@ -2200,7 +2390,8 @@ class PlannerExperiment:
                         curv_eps=float(getattr(args, "ee_backtrack_curv_eps", ExperimentParameters.PLAN_EE_BACKTRACK_CURV_EPS)),
                         armijo_c1=float(getattr(args, "ee_backtrack_armijo_c1", ExperimentParameters.PLAN_EE_BACKTRACK_ARMIJO_C1)),
                     )
-                    retreat_path_pb = self.runner.sdf2pb(np.asarray(retreat_path_sdf, dtype=float))
+                    retreat_path_sdf_arr = np.asarray(retreat_path_sdf, dtype=float)
+                    retreat_path_pb = self.runner.sdf2pb(retreat_path_sdf_arr)
                     retreat_goal_pb = self.runner.sdf2pb(np.asarray(retreat_goal_sdf, dtype=float).reshape(1, 3)).reshape(3)
                     print(
                         f"[plan] weld-start escape: start_sdf={float(retreat_vals[0]):.4f}m -> "
@@ -2280,6 +2471,41 @@ class PlannerExperiment:
                         f"min_sdf={float(np.min(ee_d_path)):.4f}m, start={np.asarray(ee_start_pb, dtype=float).tolist()}, "
                         f"goal={np.asarray(retreat_goal_pb, dtype=float).tolist()}"
                     )
+                    smooth_info = self._smooth_ee_paths(
+                        field,
+                        kind,
+                        ee_path_sdf_arr,
+                        retreat_path_sdf_arr,
+                        ee_clearance=ee_clearance,
+                        approach_min_sdf=float(
+                            getattr(
+                                args,
+                                "ee_bezier_approach_min_sdf",
+                                ExperimentParameters.PLAN_EE_BEZIER_APPROACH_MIN_SDF,
+                            )
+                        ),
+                        n_samples_per_seg=int(
+                            getattr(
+                                args,
+                                "ee_bezier_samples_per_seg",
+                                ExperimentParameters.PLAN_EE_BEZIER_SAMPLES_PER_SEG,
+                            )
+                        ),
+                    )
+                    ee_smoothed_d = np.asarray(smooth_info["ee_smoothed_d"], dtype=float)
+                    ee_smoothed_pb = self.runner.sdf2pb(np.asarray(smooth_info["ee_smoothed_sdf"], dtype=float))
+                    if smooth_info["ee_controls_sdf"] is not None:
+                        ee_control_points_pb = self.runner.sdf2pb(np.asarray(smooth_info["ee_controls_sdf"], dtype=float))
+                    approach_smoothed_d = np.asarray(smooth_info["approach_smoothed_d"], dtype=float)
+                    approach_smoothed_pb = self.runner.sdf2pb(np.asarray(smooth_info["approach_smoothed_sdf"], dtype=float))
+                    if smooth_info["approach_controls_sdf"] is not None:
+                        approach_control_points_pb = self.runner.sdf2pb(
+                            np.asarray(smooth_info["approach_controls_sdf"], dtype=float)
+                        )
+                    print(
+                        f"[plan] bezier smooth: ee_min={float(np.min(ee_smoothed_d)):.4f}m, "
+                        f"approach_min={float(np.min(approach_smoothed_d)):.4f}m"
+                    )
                     _ = ee_start_quat
                     _ = workpiece
             finally:
@@ -2306,6 +2532,12 @@ class PlannerExperiment:
             "retreat_goal": None if retreat_goal_pb is None else retreat_goal_pb.tolist(),
             "ee_path": None if ee_path_pb is None else np.asarray(ee_path_pb, dtype=float).tolist(),
             "ee_min_sdf_on_waypoints": None if ee_d_path is None else float(np.min(ee_d_path)),
+            "ee_bezier_control_points": None if ee_control_points_pb is None else np.asarray(ee_control_points_pb, dtype=float).tolist(),
+            "ee_bezier_path": None if ee_smoothed_pb is None else np.asarray(ee_smoothed_pb, dtype=float).tolist(),
+            "ee_bezier_min_sdf": None if ee_smoothed_d is None else float(np.min(ee_smoothed_d)),
+            "approach_bezier_control_points": None if approach_control_points_pb is None else np.asarray(approach_control_points_pb, dtype=float).tolist(),
+            "approach_bezier_path": None if approach_smoothed_pb is None else np.asarray(approach_smoothed_pb, dtype=float).tolist(),
+            "approach_bezier_min_sdf": None if approach_smoothed_d is None else float(np.min(approach_smoothed_d)),
             "robot_q_at_goal": None if q_plan_final is None else np.asarray(q_plan_final, dtype=float).tolist(),
         }
         out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -2323,6 +2555,18 @@ class PlannerExperiment:
         if ee_path_pb is not None:
             ee_arr = np.asarray(ee_path_pb, dtype=float)
             ax.plot(ee_arr[:, 0], ee_arr[:, 1], ee_arr[:, 2], "-o", ms=2.0, lw=1.2, c="goldenrod", label="EE RRT")
+        if ee_smoothed_pb is not None:
+            ee_smooth_arr = np.asarray(ee_smoothed_pb, dtype=float)
+            ax.plot(
+                ee_smooth_arr[:, 0], ee_smooth_arr[:, 1], ee_smooth_arr[:, 2],
+                "-", lw=2.2, c="teal", label="EE bezier",
+            )
+        if approach_smoothed_pb is not None:
+            app_smooth_arr = np.asarray(approach_smoothed_pb, dtype=float)
+            ax.plot(
+                app_smooth_arr[:, 0], app_smooth_arr[:, 1], app_smooth_arr[:, 2],
+                "-", lw=2.0, c="darkorange", label="approach bezier",
+            )
         ax.set_title(f"SDF-constrained {method.upper()} path")
         ax.legend()
         out_png = Path(args.output_png)
@@ -2340,9 +2584,15 @@ class PlannerExperiment:
             robot_q=q_plan_final,
             ee_pts_pb=ee_path_pb,
             ee_d_path=ee_d_path,
+            ee_smoothed_pts_pb=ee_smoothed_pb,
+            ee_smoothed_d_path=ee_smoothed_d,
+            ee_control_points_pb=ee_control_points_pb,
             weld_start_pb=weld_start_pb,
             retreat_pts_pb=retreat_path_pb,
             retreat_goal_pb=retreat_goal_pb,
+            approach_smoothed_pts_pb=approach_smoothed_pb,
+            approach_smoothed_d_path=approach_smoothed_d,
+            approach_control_points_pb=approach_control_points_pb,
         )
 
 
