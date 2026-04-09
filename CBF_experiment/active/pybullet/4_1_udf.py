@@ -80,6 +80,11 @@ HEATMAP_OVERLAY_ISOSURFACE: bool = True  # 叠加等值面轮廓（需要 scikit
 HEATMAP_INSIDE_OPACITY: float = 0.55    # 内部 SDF 体积层不透明度
 HEATMAP_INSIDE_SURFACE_COUNT: int = 24  # 内部 SDF 体积层等值面数
 
+# ── 占据栅格（连通性分析用）───────────────────────────────────────────────────
+BAKE_OCCUPANCY: bool = True              # True = 同时烘焙占据栅格
+OCC_SPACING: float = 0.02               # 占据栅格体素边长（可独立于 SDF spacing）
+RENDER_OCCUPANCY: bool = True            # True = 渲染占据栅格 3D + 2D 对比图
+
 # ── 烘焙参数（仅 LOAD_NPZ = None 时生效）────────────────────────────────────
 BAKE_SPACING: float = 0.02               # 体素边长（米）
 BAKE_MARGIN: float = 0.0                 # bbox 外扩边距（米）
@@ -671,6 +676,282 @@ def load_distance_field(path: str | Path) -> DistanceField:
             status_flags=status_flags,
             failure_reasons=failure_reasons,
             build_config=build_config,
+        )
+
+
+# ===========================================================================
+# Occupancy grid (boolean voxel grid for connectivity analysis)
+# ===========================================================================
+
+
+@dataclass
+class OccupancyField:
+    """Boolean voxel grid marking which cells are intersected by mesh triangles.
+
+    Unlike SDF (which samples the center point), a voxel is marked occupied
+    if *any* triangle passes through its axis-aligned bounding box.  This
+    correctly captures thin plates regardless of the relationship between
+    plate thickness and voxel spacing.
+    """
+    origin: np.ndarray
+    spacing: float
+    grid: np.ndarray            # bool, shape (nx, ny, nz)
+    bbox_min: np.ndarray
+    bbox_max: np.ndarray
+    occ_spacing: float          # may differ from DistanceField.spacing
+
+    # ── point query ───────────────────────────────────────────────────────
+
+    def _world_to_idx(self, point: np.ndarray) -> tuple[int, int, int] | None:
+        """World coordinate → integer voxel index, or None if out of grid."""
+        p = np.asarray(point, dtype=np.float64).ravel()
+        fi = (p - self.origin.astype(np.float64)) / float(self.occ_spacing)
+        ix, iy, iz = int(fi[0]), int(fi[1]), int(fi[2])
+        nx, ny, nz = self.grid.shape
+        if 0 <= ix < nx and 0 <= iy < ny and 0 <= iz < nz:
+            return ix, iy, iz
+        return None
+
+    def is_occupied(self, point: np.ndarray) -> bool:
+        idx = self._world_to_idx(point)
+        if idx is None:
+            return False
+        return bool(self.grid[idx])
+
+    def is_free(self, point: np.ndarray) -> bool:
+        return not self.is_occupied(point)
+
+    # ── connectivity (BFS flood fill) ─────────────────────────────────────
+
+    def are_connected(
+        self,
+        p_a: np.ndarray,
+        p_b: np.ndarray,
+        *,
+        connectivity: int = 6,
+    ) -> bool:
+        """Check whether two free-space points belong to the same connected component.
+
+        Parameters
+        ----------
+        p_a, p_b : (3,) world coordinates
+        connectivity : 6 (face-adjacent) or 26 (full 3D neighborhood)
+        """
+        idx_a = self._world_to_idx(p_a)
+        idx_b = self._world_to_idx(p_b)
+        if idx_a is None or idx_b is None:
+            return False
+        if self.grid[idx_a] or self.grid[idx_b]:
+            return False
+        if idx_a == idx_b:
+            return True
+
+        nx, ny, nz = self.grid.shape
+        if connectivity == 6:
+            offsets = [(1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)]
+        else:
+            offsets = [
+                (dx, dy, dz)
+                for dx in (-1, 0, 1) for dy in (-1, 0, 1) for dz in (-1, 0, 1)
+                if (dx, dy, dz) != (0, 0, 0)
+            ]
+
+        from collections import deque
+        visited = set()
+        visited.add(idx_a)
+        queue = deque([idx_a])
+        target = idx_b
+        while queue:
+            cx, cy, cz = queue.popleft()
+            for dx, dy, dz in offsets:
+                nb = (cx + dx, cy + dy, cz + dz)
+                if nb == target:
+                    return True
+                if nb in visited:
+                    continue
+                if not (0 <= nb[0] < nx and 0 <= nb[1] < ny and 0 <= nb[2] < nz):
+                    continue
+                if self.grid[nb]:
+                    continue
+                visited.add(nb)
+                queue.append(nb)
+        return False
+
+    def connected_components(self, *, connectivity: int = 6) -> np.ndarray:
+        """Label each free voxel with a component ID (0 = occupied).
+
+        Returns int32 array same shape as ``grid``.
+        """
+        from scipy import ndimage
+        free = ~self.grid
+        if connectivity == 6:
+            struct = ndimage.generate_binary_structure(3, 1)
+        else:
+            struct = ndimage.generate_binary_structure(3, 3)
+        labels, n_comp = ndimage.label(free, structure=struct)
+        print(f"[OccupancyField] {n_comp} connected free-space components")
+        return labels.astype(np.int32)
+
+    def summary(self) -> dict:
+        total = int(self.grid.size)
+        occ = int(self.grid.sum())
+        return {
+            "shape": list(self.grid.shape),
+            "spacing_mm": round(self.occ_spacing * 1000, 2),
+            "total_voxels": total,
+            "occupied": occ,
+            "free": total - occ,
+            "occupied_pct": round(100 * occ / total, 2) if total else 0,
+        }
+
+
+# ── triangle–AABB intersection (Möller's separating-axis test) ────────────
+
+def _tri_aabb_overlap(
+    tri: np.ndarray,
+    box_center: np.ndarray,
+    box_half: np.ndarray,
+) -> bool:
+    """Test if triangle ``tri`` (3,3) overlaps AABB centered at ``box_center``
+    with half-extents ``box_half``.  Uses the separating-axis theorem (9 edge-
+    cross axes + 3 box-face axes + 1 triangle-normal axis = 13 axes).
+    """
+    v0 = tri[0] - box_center
+    v1 = tri[1] - box_center
+    v2 = tri[2] - box_center
+    hx, hy, hz = float(box_half[0]), float(box_half[1]), float(box_half[2])
+
+    e0 = v1 - v0
+    e1 = v2 - v1
+    e2 = v0 - v2
+
+    for edge in (e0, e1, e2):
+        for ax_idx in range(3):
+            a = np.zeros(3)
+            a[ax_idx] = 1.0
+            axis = np.cross(edge, a)
+            norm = float(np.dot(axis, axis))
+            if norm < 1e-30:
+                continue
+            p0 = float(np.dot(v0, axis))
+            p1 = float(np.dot(v1, axis))
+            p2 = float(np.dot(v2, axis))
+            r = (hx * abs(float(axis[0]))
+                 + hy * abs(float(axis[1]))
+                 + hz * abs(float(axis[2])))
+            lo = min(p0, p1, p2)
+            hi = max(p0, p1, p2)
+            if lo > r or hi < -r:
+                return False
+
+    for ax_idx in range(3):
+        coords = [float(v0[ax_idx]), float(v1[ax_idx]), float(v2[ax_idx])]
+        h = float(box_half[ax_idx])
+        if min(coords) > h or max(coords) < -h:
+            return False
+
+    normal = np.cross(e0, e1)
+    nn = float(np.dot(normal, normal))
+    if nn > 1e-30:
+        d = float(np.dot(normal, v0))
+        r = (hx * abs(float(normal[0]))
+             + hy * abs(float(normal[1]))
+             + hz * abs(float(normal[2])))
+        if abs(d) > r:
+            return False
+
+    return True
+
+
+def bake_occupancy_grid(
+    triangles: np.ndarray,
+    bbox_min: np.ndarray,
+    bbox_max: np.ndarray,
+    spacing: float,
+    margin: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray, tuple[int, int, int]]:
+    """Mark voxels that are intersected by at least one triangle.
+
+    Uses conservative triangle-AABB overlap tests so thin plates
+    (even thinner than ``spacing``) are never missed.
+
+    Returns ``(occ_grid, origin, shape)`` where ``occ_grid`` is bool
+    of shape ``shape``.
+    """
+    origin, shape = compute_grid_domain(bbox_min, bbox_max, spacing, margin)
+    nx, ny, nz = shape
+    tris = np.asarray(triangles, dtype=np.float64)
+    origin_f64 = origin.astype(np.float64)
+    sp = float(spacing)
+    half = np.array([sp / 2, sp / 2, sp / 2], dtype=np.float64)
+
+    occ = np.zeros(shape, dtype=np.bool_)
+    n_tris = tris.shape[0]
+    marked = 0
+
+    print(f"[bake_occupancy_grid] tris={n_tris}  shape={shape}  spacing={sp*1000:.1f}mm", flush=True)
+
+    for ti in range(n_tris):
+        tri = tris[ti]
+        t_min = tri.min(axis=0)
+        t_max = tri.max(axis=0)
+        i0 = max(0, int((t_min[0] - origin_f64[0]) / sp - 1))
+        i1 = min(nx - 1, int((t_max[0] - origin_f64[0]) / sp + 1))
+        j0 = max(0, int((t_min[1] - origin_f64[1]) / sp - 1))
+        j1 = min(ny - 1, int((t_max[1] - origin_f64[1]) / sp + 1))
+        k0 = max(0, int((t_min[2] - origin_f64[2]) / sp - 1))
+        k1 = min(nz - 1, int((t_max[2] - origin_f64[2]) / sp + 1))
+
+        for i in range(i0, i1 + 1):
+            cx = origin_f64[0] + (i + 0.5) * sp
+            for j in range(j0, j1 + 1):
+                cy = origin_f64[1] + (j + 0.5) * sp
+                for k in range(k0, k1 + 1):
+                    if occ[i, j, k]:
+                        continue
+                    cz = origin_f64[2] + (k + 0.5) * sp
+                    center = np.array([cx, cy, cz])
+                    if _tri_aabb_overlap(tri, center, half):
+                        occ[i, j, k] = True
+                        marked += 1
+
+        if ti % max(1, n_tris // 20) == 0:
+            print(f"  {100 * (ti + 1) / n_tris:5.1f}%  tri {ti + 1}/{n_tris}  marked={marked}", flush=True)
+
+    print(f"[bake_occupancy_grid] done: {marked} occupied / {nx*ny*nz} total "
+          f"({100*marked/(nx*ny*nz):.2f}%)", flush=True)
+    return occ, origin, shape
+
+
+def save_occupancy_field(path: str | Path, occ_field: OccupancyField) -> None:
+    """Save occupancy grid to compressed NPZ."""
+    np.savez_compressed(
+        str(path),
+        origin=np.asarray(occ_field.origin, dtype=np.float32),
+        occ_spacing=np.float32(occ_field.occ_spacing),
+        grid=np.packbits(occ_field.grid.ravel()),
+        grid_shape=np.array(occ_field.grid.shape, dtype=np.int64),
+        bbox_min=np.asarray(occ_field.bbox_min, dtype=np.float32),
+        bbox_max=np.asarray(occ_field.bbox_max, dtype=np.float32),
+    )
+    sz_mb = Path(path).stat().st_size / 1024**2
+    print(f"[save_occupancy_field] saved {path} ({sz_mb:.1f} MB)")
+
+
+def load_occupancy_field(path: str | Path) -> OccupancyField:
+    """Load occupancy grid from NPZ."""
+    with np.load(str(path), allow_pickle=False) as data:
+        shape = tuple(int(x) for x in data["grid_shape"])
+        bits = data["grid"]
+        flat = np.unpackbits(bits)[: int(np.prod(shape))]
+        grid = flat.astype(np.bool_).reshape(shape)
+        return OccupancyField(
+            origin=np.asarray(data["origin"], dtype=np.float32),
+            spacing=float(np.asarray(data["occ_spacing"]).reshape(())),
+            grid=grid,
+            bbox_min=np.asarray(data["bbox_min"], dtype=np.float32),
+            bbox_max=np.asarray(data["bbox_max"], dtype=np.float32),
+            occ_spacing=float(np.asarray(data["occ_spacing"]).reshape(())),
         )
 
 
@@ -2582,6 +2863,213 @@ def render_3d_heatmap_plotly(
     return [p]
 
 
+# ---------------------------------------------------------------------------
+# Occupancy field visualization
+# ---------------------------------------------------------------------------
+
+
+def render_occupancy_plotly(
+    occ_field: OccupancyField,
+    output_dir: str | Path,
+    *,
+    max_side: int = 96,
+    file_name: str = "occupancy_3d.html",
+    sdf_field: DistanceField | None = None,
+) -> list[Path]:
+    """Interactive 3-D scatter of occupied voxels via Plotly.
+
+    If ``sdf_field`` is given, an additional SDF isosurface overlay is added
+    for comparison (the SDF zero-crossing surface).
+    """
+    try:
+        import plotly.graph_objects as go
+        import plotly.io as pio
+    except ImportError:
+        print("[render_occupancy_plotly] skipped: plotly not installed", file=sys.stderr)
+        return []
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    grid = occ_field.grid
+    origin = np.asarray(occ_field.origin, dtype=np.float64)
+    sp = float(occ_field.occ_spacing)
+
+    # downsample if too large
+    stride = 1
+    while max(s // stride for s in grid.shape) > max_side:
+        stride += 1
+    if stride > 1:
+        grid = grid[::stride, ::stride, ::stride]
+        sp *= stride
+
+    occ_idx = np.argwhere(grid)
+    if occ_idx.shape[0] == 0:
+        print("[render_occupancy_plotly] no occupied voxels — skipping", file=sys.stderr)
+        return []
+
+    centers = origin + (occ_idx + 0.5) * sp
+
+    # subsample if too many points for plotly
+    max_pts = 200_000
+    if centers.shape[0] > max_pts:
+        rng = np.random.default_rng(42)
+        sel = rng.choice(centers.shape[0], max_pts, replace=False)
+        centers = centers[sel]
+
+    traces = [
+        go.Scatter3d(
+            x=centers[:, 0].tolist(),
+            y=centers[:, 1].tolist(),
+            z=centers[:, 2].tolist(),
+            mode="markers",
+            marker=dict(size=max(1, min(3, 20 // stride)), color="tomato", opacity=0.6),
+            name=f"occupied ({centers.shape[0]:,} pts, stride={stride})",
+        )
+    ]
+
+    if sdf_field is not None and _grid_has_data(sdf_field.o3d_sdf_grid):
+        try:
+            measure = _import_skimage_measure()
+            raw = np.asarray(sdf_field.o3d_sdf_grid, dtype=np.float64)
+            solid = _sdf_to_solid(raw)
+            iso_ds, iso_stride = _downsample_grid(solid, max_side)
+            iso_sp = float(sdf_field.spacing) * iso_stride
+            sdf_origin = np.asarray(sdf_field.origin, dtype=np.float64)
+            if float(iso_ds.min()) <= 0 <= float(iso_ds.max()):
+                verts, faces, _, _ = measure.marching_cubes(
+                    iso_ds, level=0.0, spacing=(iso_sp,) * 3
+                )
+                verts = verts + sdf_origin
+                traces.append(go.Mesh3d(
+                    x=verts[:, 0].tolist(),
+                    y=verts[:, 1].tolist(),
+                    z=verts[:, 2].tolist(),
+                    i=faces[:, 0].tolist(),
+                    j=faces[:, 1].tolist(),
+                    k=faces[:, 2].tolist(),
+                    color="rgba(100,180,255,0.25)",
+                    flatshading=False,
+                    name="SDF=0 surface",
+                    showlegend=True,
+                ))
+        except Exception as exc:
+            print(f"[render_occupancy_plotly] SDF overlay failed: {exc}", file=sys.stderr)
+
+    bbox_min = np.asarray(occ_field.bbox_min, dtype=np.float64)
+    bbox_max = np.asarray(occ_field.bbox_max, dtype=np.float64)
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        title=dict(text="Occupancy Grid (occupied voxels)", x=0.5, font=dict(size=14)),
+        scene=dict(
+            xaxis=dict(title="X (m)", range=[float(bbox_min[0]), float(bbox_max[0])]),
+            yaxis=dict(title="Y (m)", range=[float(bbox_min[1]), float(bbox_max[1])]),
+            zaxis=dict(title="Z (m)", range=[float(bbox_min[2]), float(bbox_max[2])]),
+            aspectmode="data",
+        ),
+        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.7)"),
+        margin=dict(l=0, r=0, t=50, b=0),
+        height=720,
+    )
+    p = out / file_name
+    pio.write_html(fig, file=str(p), include_plotlyjs="cdn", full_html=True)
+    print(f"[render_occupancy_plotly] saved {p}  ({len(traces)} traces, {centers.shape[0]:,} pts)")
+    return [p]
+
+
+def render_occupancy_slice(
+    occ_field: OccupancyField,
+    output_dir: str | Path,
+    *,
+    sdf_field: DistanceField | None = None,
+    axis: int = 2,
+    index: int | None = None,
+    file_name: str | None = None,
+) -> list[Path]:
+    """2-D slice comparison: occupancy grid vs SDF sign.
+
+    Side-by-side heatmaps showing (left) occupied voxels and (right) SDF < 0
+    at the same z-index, so you can see that the occupancy grid captures thin
+    plates that SDF misses.
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("[render_occupancy_slice] skipped: matplotlib not installed", file=sys.stderr)
+        return []
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    grid = occ_field.grid
+    if index is None:
+        index = grid.shape[axis] // 2
+
+    axis_name = ["X", "Y", "Z"][axis]
+    coord_val = float(occ_field.origin[axis]) + (index + 0.5) * occ_field.occ_spacing
+
+    if axis == 0:
+        occ_slice = grid[index, :, :].T
+    elif axis == 1:
+        occ_slice = grid[:, index, :].T
+    else:
+        occ_slice = grid[:, :, index].T
+
+    has_sdf = (sdf_field is not None and _grid_has_data(sdf_field.o3d_sdf_grid))
+    n_cols = 3 if has_sdf else 1
+    fig, axes = plt.subplots(1, n_cols, figsize=(6 * n_cols, 5))
+    if n_cols == 1:
+        axes = [axes]
+
+    axes[0].imshow(occ_slice.astype(float), origin="lower", cmap="Reds", vmin=0, vmax=1, aspect="equal")
+    axes[0].set_title(f"Occupancy ({axis_name}={coord_val:.3f}m, idx={index})\n"
+                      f"spacing={occ_field.occ_spacing*1000:.0f}mm")
+
+    if has_sdf:
+        # match the occupancy slice coordinate in the SDF grid
+        sdf_idx = int((coord_val - float(sdf_field.origin[axis])) / float(sdf_field.spacing))
+        sdf_idx = max(0, min(sdf_idx, sdf_field.o3d_sdf_grid.shape[axis] - 1))
+        sdf_grid = sdf_field.o3d_sdf_grid
+        if axis == 0:
+            sdf_slice = sdf_grid[sdf_idx, :, :].T
+        elif axis == 1:
+            sdf_slice = sdf_grid[:, sdf_idx, :].T
+        else:
+            sdf_slice = sdf_grid[:, :, sdf_idx].T
+
+        sdf_inside = (sdf_slice < 0).astype(float)
+        axes[1].imshow(sdf_inside, origin="lower", cmap="Blues", vmin=0, vmax=1, aspect="equal")
+        axes[1].set_title(f"SDF<0 (o3d, {axis_name} idx={sdf_idx})\n"
+                          f"spacing={float(sdf_field.spacing)*1000:.0f}mm")
+
+        # difference: occupied but SDF>=0
+        occ_resampled = occ_slice
+        if occ_slice.shape != sdf_inside.shape:
+            from scipy.ndimage import zoom
+            scale = (sdf_inside.shape[0] / occ_slice.shape[0],
+                     sdf_inside.shape[1] / occ_slice.shape[1])
+            occ_resampled = zoom(occ_slice.astype(float), scale, order=0) > 0.5
+
+        diff = occ_resampled.astype(float) - sdf_inside
+        axes[2].imshow(diff, origin="lower", cmap="RdBu_r", vmin=-1, vmax=1, aspect="equal")
+        axes[2].set_title("Diff: red=occ only, blue=sdf only")
+
+    for ax in axes:
+        ax.set_xlabel("col")
+        ax.set_ylabel("row")
+
+    fig.tight_layout()
+    if file_name is None:
+        file_name = f"occupancy_vs_sdf_{axis_name}_idx{index}.png"
+    p = out / file_name
+    fig.savefig(str(p), dpi=150)
+    plt.close(fig)
+    print(f"[render_occupancy_slice] saved {p}")
+    return [p]
+
+
 def _default_artifact_dir(
     args: argparse.Namespace, output_path: Path | None
 ) -> Path:
@@ -2767,6 +3255,48 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         metavar="A",
         help="Volume opacity 0-1 (default: %(default)s)",
     )
+    parser.add_argument(
+        "--bake-occupancy",
+        action="store_true",
+        default=BAKE_OCCUPANCY,
+        dest="bake_occupancy",
+        help="Bake occupancy grid (triangle-AABB intersection, for connectivity analysis)",
+    )
+    parser.add_argument(
+        "--no-bake-occupancy",
+        action="store_false",
+        dest="bake_occupancy",
+        help="Skip occupancy grid baking",
+    )
+    parser.add_argument(
+        "--occ-spacing",
+        type=float,
+        default=OCC_SPACING,
+        dest="occ_spacing",
+        metavar="S",
+        help="Occupancy grid voxel spacing in metres (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--render-occupancy",
+        action="store_true",
+        default=RENDER_OCCUPANCY,
+        dest="render_occupancy",
+        help="Render occupancy 3D HTML + 2D slice comparison",
+    )
+    parser.add_argument(
+        "--no-render-occupancy",
+        action="store_false",
+        dest="render_occupancy",
+        help="Skip occupancy visualization",
+    )
+    parser.add_argument(
+        "--load-occupancy",
+        type=str,
+        default=None,
+        dest="load_occupancy",
+        metavar="NPZ",
+        help="Load a pre-baked occupancy grid .npz",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
@@ -2830,10 +3360,39 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     assert field is not None
 
+    # ── occupancy grid ────────────────────────────────────────────────────
+    occ_field: OccupancyField | None = None
+
+    if getattr(args, "load_occupancy", None):
+        occ_field = load_occupancy_field(args.load_occupancy)
+        s = occ_field.summary()
+        print(f"[main] loaded occupancy: {s['shape']}  "
+              f"spacing={s['spacing_mm']}mm  "
+              f"occupied={s['occupied']:,} ({s['occupied_pct']}%)")
+    elif getattr(args, "bake_occupancy", False) and args.urdf:
+        if 'assy' not in locals():
+            assy = load_assembly_from_urdf(args.urdf)
+        occ_sp = float(getattr(args, "occ_spacing", OCC_SPACING))
+        occ_grid, occ_origin, occ_shape = bake_occupancy_grid(
+            assy.triangles, assy.bbox_min, assy.bbox_max,
+            spacing=occ_sp, margin=float(args.margin),
+        )
+        occ_field = OccupancyField(
+            origin=occ_origin, spacing=occ_sp, grid=occ_grid,
+            bbox_min=np.asarray(assy.bbox_min, dtype=np.float32),
+            bbox_max=np.asarray(assy.bbox_max, dtype=np.float32),
+            occ_spacing=occ_sp,
+        )
+        if output_path is not None:
+            occ_path = output_path.parent / (output_path.stem + "_occ.npz")
+            save_occupancy_field(occ_path, occ_field)
+
+    # ── rendering ─────────────────────────────────────────────────────────
     do_render_3d     = bool(getattr(args, "render_3d", False))
     do_render_heatmap = bool(getattr(args, "render_3d_heatmap", False))
+    do_render_occ    = bool(getattr(args, "render_occupancy", False)) and occ_field is not None
 
-    if do_render or do_render_3d or do_render_heatmap:
+    if do_render or do_render_3d or do_render_heatmap or do_render_occ:
         plot_dir = (
             Path(args.artifact_dir)
             if args.artifact_dir
@@ -2864,6 +3423,10 @@ def main(argv: Iterable[str] | None = None) -> int:
                 overlay_isosurface=bool(HEATMAP_OVERLAY_ISOSURFACE),
                 iso_threshold=float(RENDER_3D_THRESHOLD),
             )
+
+        if do_render_occ:
+            render_occupancy_plotly(occ_field, plot_dir, sdf_field=field)
+            render_occupancy_slice(occ_field, plot_dir, sdf_field=field, axis=2)
 
     return 0
 
