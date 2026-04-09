@@ -2111,50 +2111,27 @@ class PlannerExperiment:
             out += coeff[:, None] * cps[i].reshape(1, 3)
         return out
 
-    def _build_cubic_bezier_controls(self, path_pts: np.ndarray) -> np.ndarray:
+    def _build_cubic_bezier_controls(
+        self,
+        path_pts: np.ndarray,
+        *,
+        end_tangent: np.ndarray | None = None,
+    ) -> np.ndarray:
         pts = np.asarray(path_pts, dtype=float).reshape(-1, 3)
         p0 = pts[0].copy()
         p3 = pts[-1].copy()
         if pts.shape[0] < 3:
             chord = p3 - p0
+            if end_tangent is not None:
+                tan = np.asarray(end_tangent, dtype=float).reshape(3)
+                return np.vstack([p0, p0 + chord / 3.0, p3 - tan / 3.0, p3])
             return np.vstack([p0, p0 + chord / 3.0, p0 + 2.0 * chord / 3.0, p3])
         p1 = self._sample_polyline_fraction(pts, 0.25)
-        p2 = self._sample_polyline_fraction(pts, 0.75)
+        if end_tangent is not None:
+            p2 = p3 - np.asarray(end_tangent, dtype=float).reshape(3) / 3.0
+        else:
+            p2 = self._sample_polyline_fraction(pts, 0.75)
         return np.vstack([p0, p1, p2, p3])
-
-    def _build_quintic_approach_controls(
-        self,
-        path_pts: np.ndarray,
-        join_tangent: np.ndarray,
-    ) -> np.ndarray:
-        pts = np.asarray(path_pts, dtype=float).reshape(-1, 3)
-        q0 = pts[0].copy()
-        q5 = pts[-1].copy()
-        if pts.shape[0] < 3:
-            chord = q5 - q0
-            return np.vstack([
-                q0,
-                q0 + chord / 5.0,
-                q0 + 2.0 * chord / 5.0,
-                q0 + 3.0 * chord / 5.0,
-                q0 + 4.0 * chord / 5.0,
-                q5,
-            ])
-        total_len = self._polyline_length(pts)
-        chord_len = float(np.linalg.norm(q5 - q0))
-        t0 = self._normalize(join_tangent)
-        if np.linalg.norm(t0) < 1e-12:
-            t0 = self._normalize(pts[1] - pts[0])
-        t1 = self._normalize(pts[-1] - pts[-2])
-        handle0 = min(0.20 * total_len, 0.35 * chord_len) if chord_len > 1e-9 else 0.05
-        handle1 = min(0.14 * total_len, 0.25 * chord_len) if chord_len > 1e-9 else 0.04
-        q1 = q0 + handle0 * t0
-        q4 = q5 - handle1 * t1
-        s35 = self._sample_polyline_fraction(pts, 0.35)
-        s70 = self._sample_polyline_fraction(pts, 0.70)
-        q2 = 0.5 * q1 + 0.5 * s35
-        q3 = 0.5 * q4 + 0.5 * s70
-        return np.vstack([q0, q1, q2, q3, q4, q5])
 
     def _smooth_ee_paths(
         self,
@@ -2167,6 +2144,12 @@ class PlannerExperiment:
         approach_min_sdf: float,
         n_samples_per_seg: int,
     ) -> dict:
+        def _line_resample(start: np.ndarray, goal: np.ndarray, n_samples: int) -> np.ndarray:
+            s = np.asarray(start, dtype=float).reshape(3)
+            g = np.asarray(goal, dtype=float).reshape(3)
+            ts = np.linspace(0.0, 1.0, max(int(n_samples), 2))
+            return (1.0 - ts[:, None]) * s.reshape(1, 3) + ts[:, None] * g.reshape(1, 3)
+
         result = {
             "ee_controls_sdf": None,
             "ee_smoothed_sdf": ee_path_sdf_arr.copy(),
@@ -2181,8 +2164,12 @@ class PlannerExperiment:
             ),
         }
         ee_raw = np.asarray(ee_path_sdf_arr, dtype=float).reshape(-1, 3)
+        approach_raw = np.asarray(retreat_path_sdf_arr[::-1], dtype=float).reshape(-1, 3)
+        line_tangent = None
+        if approach_raw.shape[0] >= 2:
+            line_tangent = approach_raw[-1] - approach_raw[0]
         if ee_raw.shape[0] >= 2:
-            ee_controls = self._build_cubic_bezier_controls(ee_raw)
+            ee_controls = self._build_cubic_bezier_controls(ee_raw, end_tangent=line_tangent)
             ee_smooth = self._eval_bezier(ee_controls, n_samples_per_seg)
             ee_d = self.runner.query_field(field, ee_smooth, kind=kind, safe_oob=True)
             if float(np.min(ee_d)) >= float(ee_clearance):
@@ -2190,18 +2177,11 @@ class PlannerExperiment:
                 result["ee_smoothed_sdf"] = ee_smooth
                 result["ee_smoothed_d"] = ee_d
 
-        approach_raw = np.asarray(retreat_path_sdf_arr[::-1], dtype=float).reshape(-1, 3)
         if approach_raw.shape[0] >= 2:
-            if result["ee_controls_sdf"] is not None:
-                ee_controls = np.asarray(result["ee_controls_sdf"], dtype=float)
-                join_tangent = self._normalize(ee_controls[-1] - ee_controls[-2])
-            else:
-                join_tangent = self._normalize(approach_raw[1] - approach_raw[0])
-            app_controls = self._build_quintic_approach_controls(approach_raw, join_tangent)
-            app_smooth = self._eval_bezier(app_controls, n_samples_per_seg)
+            app_smooth = _line_resample(approach_raw[0], approach_raw[-1], n_samples_per_seg)
             app_d = self.runner.query_field(field, app_smooth, kind=kind, safe_oob=True)
             if float(np.min(app_d)) >= float(approach_min_sdf):
-                result["approach_controls_sdf"] = app_controls
+                result["approach_controls_sdf"] = np.vstack([approach_raw[0], approach_raw[-1]])
                 result["approach_smoothed_sdf"] = app_smooth
                 result["approach_smoothed_d"] = app_d
         return result
