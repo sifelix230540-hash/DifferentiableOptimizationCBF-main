@@ -110,6 +110,8 @@ class ExperimentParameters:
     PLAN_EE_BACKTRACK_MIN_STEP = 0.005
     PLAN_EE_BACKTRACK_SHRINK = 0.5
     PLAN_EE_BACKTRACK_MAX_ITERS = 32
+    PLAN_EE_BACKTRACK_CURV_EPS = 0.01
+    PLAN_EE_BACKTRACK_ARMIJO_C1 = 0.05
     PLAN_EE_STEP_SIZE = 0.08
     PLAN_EE_NEAR_RADIUS = 0.18
     PLAN_EE_GOAL_TOLERANCE = 0.05
@@ -219,6 +221,8 @@ class ExperimentParameters:
             ee_backtrack_min_step=cls.PLAN_EE_BACKTRACK_MIN_STEP,
             ee_backtrack_shrink=cls.PLAN_EE_BACKTRACK_SHRINK,
             ee_backtrack_max_iters=cls.PLAN_EE_BACKTRACK_MAX_ITERS,
+            ee_backtrack_curv_eps=cls.PLAN_EE_BACKTRACK_CURV_EPS,
+            ee_backtrack_armijo_c1=cls.PLAN_EE_BACKTRACK_ARMIJO_C1,
             ee_step_size=cls.PLAN_EE_STEP_SIZE,
             ee_near_radius=cls.PLAN_EE_NEAR_RADIUS,
             ee_goal_tolerance=cls.PLAN_EE_GOAL_TOLERANCE,
@@ -1939,7 +1943,42 @@ class PlannerExperiment:
         min_step: float,
         shrink: float,
         max_iters: int,
+        curv_eps: float,
+        armijo_c1: float,
     ) -> tuple[list[np.ndarray], np.ndarray, np.ndarray]:
+        def _directional_second_derivative(point: np.ndarray, direction: np.ndarray, eps: float) -> float:
+            eps_use = max(float(eps), 1e-4)
+            p_plus = point + eps_use * direction
+            p_minus = point - eps_use * direction
+            _, grads_pm = field.query_with_gradient(
+                np.vstack([p_plus, p_minus]).astype(np.float32),
+                kind=kind,
+            )
+            grads_pm = np.asarray(grads_pm, dtype=float).reshape(-1, 3)
+            gp = float(np.dot(grads_pm[0], direction))
+            gm = float(np.dot(grads_pm[1], direction))
+            return (gp - gm) / (2.0 * eps_use)
+
+        def _predict_step(delta_target: float, g_dir: float, h_dir: float, fallback_step: float) -> float:
+            if delta_target <= 0.0:
+                return max(float(min_step), 0.0)
+            g_eff = max(float(g_dir), 1e-8)
+            h_eff = float(h_dir)
+            if abs(h_eff) < 1e-8:
+                return max(float(min_step), delta_target / g_eff)
+            disc = g_eff * g_eff + 2.0 * h_eff * delta_target
+            if disc > 0.0:
+                sqrt_disc = math.sqrt(disc)
+                roots = [
+                    (-g_eff + sqrt_disc) / h_eff,
+                    (-g_eff - sqrt_disc) / h_eff,
+                ]
+                positive_roots = [r for r in roots if r > float(min_step)]
+                if positive_roots:
+                    return min(positive_roots)
+            first_order = delta_target / g_eff
+            return max(float(min_step), min(float(fallback_step), first_order))
+
         cur = np.asarray(start_sdf, dtype=float).reshape(3)
         vals, grads = field.query_with_gradient(cur.reshape(1, 3).astype(np.float32), kind=kind)
         cur_val = float(np.asarray(vals, dtype=float).reshape(-1)[0])
@@ -1956,13 +1995,23 @@ class PlannerExperiment:
                 direction = self._normalize(self.runner.estimate_surface_normal(field, cur, kind, eps=0.002))
             if np.linalg.norm(direction) < 1e-12:
                 break
-            step = max(float(init_step), float(target_sdf) - cur_val)
+            g_dir = float(np.dot(cur_grad, direction))
+            if g_dir <= 1e-9:
+                break
+            h_dir = _directional_second_derivative(cur, direction, float(curv_eps))
+            step = _predict_step(
+                float(target_sdf) - cur_val,
+                g_dir,
+                h_dir,
+                float(init_step),
+            )
             accepted = False
             while step >= float(min_step):
                 cand = cur + step * direction
                 vals_c, grads_c = field.query_with_gradient(cand.reshape(1, 3).astype(np.float32), kind=kind)
                 cand_val = float(np.asarray(vals_c, dtype=float).reshape(-1)[0])
-                if cand_val > cur_val + 1e-6:
+                sufficient_increase = cur_val + float(armijo_c1) * step * g_dir
+                if cand_val >= float(target_sdf) or cand_val >= sufficient_increase:
                     cur = cand
                     cur_val = cand_val
                     cur_grad = np.asarray(grads_c, dtype=float).reshape(-1, 3)[0]
@@ -2148,6 +2197,8 @@ class PlannerExperiment:
                         min_step=float(getattr(args, "ee_backtrack_min_step", ExperimentParameters.PLAN_EE_BACKTRACK_MIN_STEP)),
                         shrink=float(getattr(args, "ee_backtrack_shrink", ExperimentParameters.PLAN_EE_BACKTRACK_SHRINK)),
                         max_iters=int(getattr(args, "ee_backtrack_max_iters", ExperimentParameters.PLAN_EE_BACKTRACK_MAX_ITERS)),
+                        curv_eps=float(getattr(args, "ee_backtrack_curv_eps", ExperimentParameters.PLAN_EE_BACKTRACK_CURV_EPS)),
+                        armijo_c1=float(getattr(args, "ee_backtrack_armijo_c1", ExperimentParameters.PLAN_EE_BACKTRACK_ARMIJO_C1)),
                     )
                     retreat_path_pb = self.runner.sdf2pb(np.asarray(retreat_path_sdf, dtype=float))
                     retreat_goal_pb = self.runner.sdf2pb(np.asarray(retreat_goal_sdf, dtype=float).reshape(1, 3)).reshape(3)
