@@ -1,0 +1,135 @@
+{
+  "sample_json": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\artifacts\\sdf_exp\\self_collision_eval_samples.json",
+  "joint_indices": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "joint_names": [
+    "link04",
+    "link05",
+    "link06",
+    "link07",
+    "link08",
+    "link09"
+  ],
+  "selected_samples": [
+    {
+      "label": "collision",
+      "sample_index": 3763,
+      "revolute_q": [
+        -2.365656995963056,
+        -5.11870633051847,
+        2.9942485210842387,
+        -4.364622610473264,
+        -3.6858895196583465,
+        3.43847185228893
+      ],
+      "stored_min_distance": -0.12727166346045934,
+      "recomputed_min_distance": -0.12727166346045934,
+      "recomputed_is_collision": true,
+      "active_pair": [
+        5,
+        8
+      ]
+    },
+    {
+      "label": "collision",
+      "sample_index": 2998,
+      "revolute_q": [
+        -1.0835520614430605,
+        -4.907516096671231,
+        -2.0709120989892433,
+        -4.171454360972048,
+        -3.564348447976622,
+        -4.88253987077602
+      ],
+      "stored_min_distance": -0.033694410644608465,
+      "recomputed_min_distance": -0.033694410644608465,
+      "recomputed_is_collision": true,
+      "active_pair": [
+        6,
+        8
+      ]
+    },
+    {
+      "label": "collision",
+      "sample_index": 3354,
+      "revolute_q": [
+        4.569677783024489,
+        -2.233592535066527,
+        -2.0818532377644843,
+        1.5750004395198465,
+        -1.6722830479798096,
+        0.7186460769813259
+      ],
+      "stored_min_distance": -0.001005941645140615,
+      "recomputed_min_distance": -0.001005941645140615,
+      "recomputed_is_collision": true,
+      "active_pair": [
+        6,
+        8
+      ]
+    },
+    {
+      "label": "free",
+      "sample_index": 6527,
+      "revolute_q": [
+        0.21577910797226263,
+        4.594588275962228,
+        -0.6579272710751489,
+        -5.265831718303533,
+        1.9325906112738425,
+        -3.0622426033790253
+      ],
+      "stored_min_distance": 3.29677557293212e-06,
+      "recomputed_min_distance": 3.29677557293212e-06,
+      "recomputed_is_collision": false,
+      "active_pair": [
+        6,
+        8
+      ]
+    },
+    {
+      "label": "free",
+      "sample_index": 4985,
+      "revolute_q": [
+        -5.904054032940158,
+        -0.7636448037115571,
+        5.405585632048903,
+        -1.032259781305962,
+        0.3627016826687788,
+        -1.9752514136047887
+      ],
+      "stored_min_distance": 0.025918932234698745,
+      "recomputed_min_distance": 0.025918932234698745,
+      "recomputed_is_collision": false,
+      "active_pair": [
+        7,
+        9
+      ]
+    },
+    {
+      "label": "free",
+      "sample_index": 7535,
+      "revolute_q": [
+        -2.527153838572913,
+        -3.3834012773514512,
+        -1.5912341637798182,
+        -0.6004041724883953,
+        -3.3628378407352506,
+        4.342425024061911
+      ],
+      "stored_min_distance": 0.026166260039808042,
+      "recomputed_min_distance": 0.026166260039808042,
+      "recomputed_is_collision": false,
+      "active_pair": [
+        7,
+        9
+      ]
+    }
+  ]
+}

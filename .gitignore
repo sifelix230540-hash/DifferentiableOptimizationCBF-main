@@ -164,3 +164,10 @@ cython_debug/
 .worktrees/
 output/
 tmp/
+
+# Large generated experiment artifacts
+artifacts/sdf_exp/self_collision_cspace_hulls.json
+artifacts/sdf_exp/boundary_dataset.npz
+artifacts/sdf_exp/joint_trajectory.json
+artifacts/sdf_exp/self_collision_eval_samples.json
+artifacts/voxel_box_exp/boxes_3d.html

@@ -154,9 +154,40 @@ class JakaRobot:
         state = p.getLinkState(self.body_id, self.ee_link_index, computeForwardKinematics=True)
         return np.array(state[4], dtype=float), np.array(state[5], dtype=float)
 
-    def get_link_origin(self, link_index):
+    def get_link_pose(self, link_index):
         state = p.getLinkState(self.body_id, link_index, computeForwardKinematics=True)
-        return np.array(state[4], dtype=float)
+        return np.array(state[4], dtype=float), np.array(state[5], dtype=float)
+
+    def get_link_origin(self, link_index):
+        pos, _ = self.get_link_pose(link_index)
+        return pos
+
+    def transform_link_points_to_world(self, link_index, local_points, local_normals=None):
+        world_pos, world_quat = self.get_link_pose(link_index)
+        rot = np.array(p.getMatrixFromQuaternion(world_quat.tolist()), dtype=float).reshape(3, 3)
+        pts_local = np.asarray(local_points, dtype=float).reshape(-1, 3)
+        pts_world = (rot @ pts_local.T).T + world_pos.reshape(1, 3)
+        if local_normals is None:
+            return pts_world, None
+        normals_local = np.asarray(local_normals, dtype=float).reshape(-1, 3)
+        normals_world = (rot @ normals_local.T).T
+        return pts_world, normals_world
+
+    def get_surface_local_samples(self, link_indices: list[int] | None = None) -> dict[int, dict]:
+        selected = None if link_indices is None else {int(li) for li in link_indices}
+        body_clouds = getattr(getattr(self, "_surface_engine", None), "_body_clouds", {}).get(int(self.body_id), {})
+        samples: dict[int, dict] = {}
+        for link_index, cloud in body_clouds.items():
+            if selected is not None and int(link_index) not in selected:
+                continue
+            samples[int(link_index)] = {
+                "link_index": int(link_index),
+                "link_name": str(cloud.link_name),
+                "local_points": np.asarray(cloud.local_points, dtype=float).copy(),
+                "local_normals": np.asarray(cloud.local_normals, dtype=float).copy(),
+                "role": str(cloud.role),
+            }
+        return samples
 
     def get_robobase_pose(self):
         if int(self.robobase_link_index) < 0:

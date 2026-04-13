@@ -1,0 +1,21 @@
+{
+  "space": "joint",
+  "boundary_band": 0.02,
+  "num_collision_samples": 4426,
+  "num_free_samples": 7574,
+  "coverage": 0.9109805693628559,
+  "miss_rate": 0.08901943063714413,
+  "false_positive_rate": 0.7743596514391339,
+  "collision_inside_count": 4032,
+  "collision_missed_count": 394,
+  "free_inside_count": 5865,
+  "free_outside_count": 1709,
+  "collision_violation_mean": -0.06635559406571921,
+  "free_violation_mean": -0.04689399062199754,
+  "boundary_collision_count": 1315,
+  "boundary_collision_coverage": 0.9262357414448669,
+  "boundary_free_count": 1856,
+  "boundary_free_false_positive_rate": 0.9116379310344828,
+  "hull_json": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\artifacts\\sdf_exp\\self_collision_cspace_hulls.json",
+  "sample_json": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\artifacts\\sdf_exp\\self_collision_eval_samples.json"
+}

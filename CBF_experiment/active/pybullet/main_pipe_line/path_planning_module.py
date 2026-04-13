@@ -21,16 +21,22 @@ import pybullet as p  # noqa: E402
 from scipy.optimize import minimize  # noqa: E402
 from scipy.spatial.transform import Rotation  # noqa: E402
 
-from CBF_experiment.active.pybullet.welding_320_common import ExperimentConfig  # noqa: E402
-from CBF_experiment.active.pybullet.welding_320_robot import JakaRobot, WorkpieceModel  # noqa: E402
+from CBF_experiment.active.pybullet.configuration_metrics import compute_self_collision_clearance, evaluate_configuration_quality, rank_configuration_records, summarize_clearance_entries  # noqa: E402
+from CBF_experiment.active.pybullet.simulation_module import ExperimentConfig, JakaRobot, WorkpieceModel  # noqa: E402
+
+
+def _rank_init_config_candidates(records: list[dict], selection_weights: dict | None = None) -> list[dict]:
+    return rank_configuration_records(records, weights=selection_weights)
+
 
 class ExperimentParameters:
     """用户集中参数区（直接 F5 运行，优先改这里）。"""
 
     _CFG = ExperimentConfig()
+    _QUALITY_CFG = dict(_CFG._cfg.get("configuration_quality", {}))
 
     RUN_STEPS = ["align", "init-config", "nearest-region", "plan"]
-
+    #RUN_STEPS = ["nearest-region", "plan"]
     DEFAULT_SDF_NPZ = (
         "assets/cad_exports/model_CAD/scene/urdf/中组立0725(1).stp.SLDASM_udf.npz"
     )
@@ -55,7 +61,7 @@ class ExperimentParameters:
     NEAR_TOP_K = 8
     NEAR_CANDIDATE_POOL = 256
     NEAR_REQUIRE_ABOVE_WELD = True
-    NEAR_ABOVE_WELD_MIN_DZ = 0.0
+    NEAR_ABOVE_WELD_MIN_DZ = 0.3
     NEAR_BBOX_MARGIN = 0.10
     NEAR_SURFACE_NORMAL_EPS = 0.002
     NEAR_WELD_GOAL_POINT = None
@@ -72,8 +78,11 @@ class ExperimentParameters:
     NEAR_OUTPUT_JSON = "artifacts/sdf_exp/nearest_region.json"
     NEAR_OUTPUT_PNG = "artifacts/sdf_exp/nearest_region.png"
 
-    INIT_NUM_SAMPLES = 400
-    INIT_SAMPLE_STD = 0.2
+    INIT_NUM_SAMPLES = 2000
+    INIT_SAMPLE_STD = 0.8
+    INIT_REFINE_TOP_K = 10
+    INIT_REFINE_SAMPLES = 300
+    INIT_REFINE_STD = 0.15
     INIT_MIN_CLEARANCE = 0.005
     INIT_VOXEL = 0.04
     INIT_SEED = 3
@@ -81,6 +90,9 @@ class ExperimentParameters:
     INIT_OUTPUT_PNG = "artifacts/sdf_exp/init_kernel.png"
     INIT_SKIP_EXTERNAL_COLLISION = True
     INIT_OUTPUT_JSON = "artifacts/sdf_exp/init_config_report.json"
+    INIT_SELECTION_WEIGHTS = dict(_QUALITY_CFG.get("selection_weights", {}))
+    INIT_MOTION_COMPONENT = str(_QUALITY_CFG.get("motion_component", "linear"))
+    INIT_SELF_COLLISION_QUERY_DISTANCE = float(_QUALITY_CFG.get("self_collision_query_distance", 0.12))
 
     PLAN_METHOD = "rrt*"
     PLAN_KIND = "auto"
@@ -183,6 +195,9 @@ class ExperimentParameters:
             workpiece_urdf_path=cls.DEFAULT_WORKPIECE_URDF_PATH,
             num_samples=cls.INIT_NUM_SAMPLES,
             sample_std=cls.INIT_SAMPLE_STD,
+            refine_top_k=cls.INIT_REFINE_TOP_K,
+            refine_samples=cls.INIT_REFINE_SAMPLES,
+            refine_std=cls.INIT_REFINE_STD,
             min_clearance=cls.INIT_MIN_CLEARANCE,
             voxel=cls.INIT_VOXEL,
             seed=cls.INIT_SEED,
@@ -190,6 +205,9 @@ class ExperimentParameters:
             output_png=cls.INIT_OUTPUT_PNG,
             skip_external_collision=cls.INIT_SKIP_EXTERNAL_COLLISION,
             output_json=cls.INIT_OUTPUT_JSON,
+            selection_weights=cls.INIT_SELECTION_WEIGHTS,
+            motion_component=cls.INIT_MOTION_COMPONENT,
+            self_collision_query_distance=cls.INIT_SELF_COLLISION_QUERY_DISTANCE,
         )
 
     @classmethod
@@ -259,8 +277,17 @@ class ExperimentRunner:
         return mod
 
     @staticmethod
-    def _ensure_parent(path: Path) -> None:
+    def _resolve_path(path: Path) -> Path:
+        if not path.is_absolute():
+            return (REPO_ROOT / path).resolve()
+        return path
+
+    @staticmethod
+    def _ensure_parent(path: Path) -> str:
+        if not path.is_absolute():
+            path = (REPO_ROOT / path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
+        return str(path)
 
     @staticmethod
     def _parse_vec3(text: str) -> np.ndarray:
@@ -320,8 +347,8 @@ class ExperimentRunner:
     def resolve_kind(self, field, kind: str) -> str:
         return kind if kind != "auto" else self._best_kind(field)
 
-    def ensure_parent(self, path: Path) -> None:
-        self._ensure_parent(path)
+    def ensure_parent(self, path: Path) -> str:
+        return self._ensure_parent(path)
 
     def parse_vec3(self, text: str) -> np.ndarray:
         return self._parse_vec3(text)
@@ -439,7 +466,7 @@ class ExperimentRunner:
             bbox_max=np.asarray(assy.bbox_max, dtype=np.float32),
             occ_spacing=float(field.spacing),
         )
-        self.ensure_parent(occ_path)
+        occ_path = self.ensure_parent(occ_path)
         udf_mod.save_occupancy_field(occ_path, occ_field)
         return occ_field, occ_path
 
@@ -730,11 +757,23 @@ class ExperimentRunner:
         ee_smoothed_d_path: np.ndarray | None = None,
         ee_control_points_pb: np.ndarray | None = None,
         weld_start_pb: np.ndarray | None = None,
+        weld_goal_pb: np.ndarray | None = None,
         retreat_pts_pb: np.ndarray | None = None,
         retreat_goal_pb: np.ndarray | None = None,
         approach_smoothed_pts_pb: np.ndarray | None = None,
         approach_smoothed_d_path: np.ndarray | None = None,
         approach_control_points_pb: np.ndarray | None = None,
+        approach_line_pts_pb: np.ndarray | None = None,
+        approach_line_d_path: np.ndarray | None = None,
+        approach_line_feasible: bool | None = None,
+        end_retreat_pts_pb: np.ndarray | None = None,
+        end_retreat_goal_pb: np.ndarray | None = None,
+        end_ee_pts_pb: np.ndarray | None = None,
+        end_ee_smoothed_pts_pb: np.ndarray | None = None,
+        end_approach_smoothed_pts_pb: np.ndarray | None = None,
+        end_approach_control_points_pb: np.ndarray | None = None,
+        end_approach_line_pts_pb: np.ndarray | None = None,
+        end_approach_line_feasible: bool | None = None,
     ) -> None:
         if not (ExperimentParameters.VIS_PYBULLET and "plan" in ExperimentParameters.VIS_PYBULLET_STEPS):
             return
@@ -839,6 +878,7 @@ class ExperimentRunner:
                     f"EE bezier: {ee_smooth.shape[0]} pts, min SDF={float(np.min(ee_smoothed_d_path))*1000:.1f}mm",
                     [0.0, -0.41, 0.40], [0.1, 0.1, 0.1], textSize=1.0,
                 )
+        app_smooth = None
         if approach_smoothed_pts_pb is not None:
             app_smooth = np.asarray(approach_smoothed_pts_pb, dtype=float).reshape(-1, 3)
             for i in range(len(app_smooth) - 1):
@@ -855,8 +895,114 @@ class ExperimentRunner:
                 )
             if approach_smoothed_d_path is not None and len(approach_smoothed_d_path) > 0:
                 p.addUserDebugText(
-                    f"Approach bezier: {app_smooth.shape[0]} pts, min SDF={float(np.min(approach_smoothed_d_path))*1000:.1f}mm",
+                        f"Approach line: {app_smooth.shape[0]} pts, min SDF={float(np.min(approach_smoothed_d_path))*1000:.1f}mm",
                     [0.0, -0.46, 0.35], [0.1, 0.1, 0.1], textSize=0.95,
+                )
+        if approach_line_pts_pb is not None:
+            app_line = np.asarray(approach_line_pts_pb, dtype=float).reshape(-1, 3)
+            same_as_actual = (
+                app_smooth is not None
+                and app_smooth.shape == app_line.shape
+                and np.allclose(app_smooth, app_line)
+            )
+            if not same_as_actual:
+                line_color = [1.0, 0.82, 0.15] if bool(approach_line_feasible) else [1.0, 0.55, 0.1]
+                for i in range(len(app_line) - 1):
+                    p.addUserDebugLine(
+                        app_line[i].tolist(), app_line[i + 1].tolist(),
+                        line_color, lineWidth=1.8,
+                    )
+                p.addUserDebugPoints(
+                    app_line.tolist(),
+                    np.full((app_line.shape[0], 3), line_color).tolist(),
+                    pointSize=4,
+                )
+                if approach_line_d_path is not None and len(approach_line_d_path) > 0:
+                    tag = "feasible" if bool(approach_line_feasible) else "candidate only"
+                    p.addUserDebugText(
+                        f"Approach line: {app_line.shape[0]} pts, min SDF={float(np.min(approach_line_d_path))*1000:.1f}mm ({tag})",
+                        [0.0, -0.51, 0.30], [0.1, 0.1, 0.1], textSize=0.92,
+                    )
+        if weld_start_pb is not None and weld_goal_pb is not None:
+            ws = np.asarray(weld_start_pb, dtype=float).reshape(3)
+            wg = np.asarray(weld_goal_pb, dtype=float).reshape(3)
+            p.addUserDebugLine(ws.tolist(), wg.tolist(), [0.95, 0.1, 0.1], lineWidth=3.5)
+            self.create_sphere_marker(wg, 0.014, (0.6, 0.0, 0.85, 0.9))
+            p.addUserDebugText(
+                "weld-goal", (wg + np.array([0, 0, 0.03])).tolist(),
+                [0.5, 0.0, 0.7], textSize=0.95,
+            )
+        if end_retreat_pts_pb is not None:
+            end_retreat = np.asarray(end_retreat_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(end_retreat) - 1):
+                p.addUserDebugLine(
+                    end_retreat[i].tolist(), end_retreat[i + 1].tolist(),
+                    [0.55, 0.2, 0.8], lineWidth=2.0,
+                )
+            p.addUserDebugPoints(
+                end_retreat.tolist(),
+                np.full((end_retreat.shape[0], 3), [0.55, 0.2, 0.8]).tolist(),
+                pointSize=5,
+            )
+        if end_retreat_goal_pb is not None:
+            erg = np.asarray(end_retreat_goal_pb, dtype=float).reshape(3)
+            self.create_sphere_marker(erg, 0.016, (0.45, 0.0, 0.75, 0.95))
+            p.addUserDebugText(
+                "end-retreat-goal", (erg + np.array([0, 0, 0.03])).tolist(),
+                [0.35, 0.0, 0.6], textSize=0.9,
+            )
+        if end_ee_pts_pb is not None:
+            end_ee = np.asarray(end_ee_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(end_ee) - 1):
+                p.addUserDebugLine(
+                    end_ee[i].tolist(), end_ee[i + 1].tolist(),
+                    [0.7, 0.5, 0.95], lineWidth=2.2,
+                )
+            p.addUserDebugPoints(
+                end_ee.tolist(),
+                np.full((end_ee.shape[0], 3), [0.7, 0.5, 0.95]).tolist(),
+                pointSize=5,
+            )
+        if end_ee_smoothed_pts_pb is not None:
+            end_ee_smooth = np.asarray(end_ee_smoothed_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(end_ee_smooth) - 1):
+                p.addUserDebugLine(
+                    end_ee_smooth[i].tolist(), end_ee_smooth[i + 1].tolist(),
+                    [0.4, 0.3, 0.85], lineWidth=2.4,
+                )
+        end_app_smooth_vis = None
+        if end_approach_smoothed_pts_pb is not None:
+            end_app_smooth_vis = np.asarray(end_approach_smoothed_pts_pb, dtype=float).reshape(-1, 3)
+            for i in range(len(end_app_smooth_vis) - 1):
+                p.addUserDebugLine(
+                    end_app_smooth_vis[i].tolist(), end_app_smooth_vis[i + 1].tolist(),
+                    [0.9, 0.35, 0.2], lineWidth=2.0,
+                )
+            if end_approach_control_points_pb is not None:
+                ecps = np.asarray(end_approach_control_points_pb, dtype=float).reshape(-1, 3)
+                p.addUserDebugPoints(
+                    ecps.tolist(),
+                    np.full((ecps.shape[0], 3), [0.9, 0.35, 0.2]).tolist(),
+                    pointSize=7,
+                )
+        if end_approach_line_pts_pb is not None:
+            end_app_line = np.asarray(end_approach_line_pts_pb, dtype=float).reshape(-1, 3)
+            end_same_vis = (
+                end_app_smooth_vis is not None
+                and end_app_smooth_vis.shape == end_app_line.shape
+                and np.allclose(end_app_smooth_vis, end_app_line)
+            )
+            if not end_same_vis:
+                elc = [0.95, 0.6, 0.15] if bool(end_approach_line_feasible) else [0.95, 0.35, 0.1]
+                for i in range(len(end_app_line) - 1):
+                    p.addUserDebugLine(
+                        end_app_line[i].tolist(), end_app_line[i + 1].tolist(),
+                        elc, lineWidth=1.8,
+                    )
+                p.addUserDebugPoints(
+                    end_app_line.tolist(),
+                    np.full((end_app_line.shape[0], 3), elc).tolist(),
+                    pointSize=4,
                 )
         self.wait()
 
@@ -953,8 +1099,7 @@ class AlignmentExperiment:
         else:
             raise ValueError(f"未知 align_mode: {args.align_mode}")
 
-        out_json = Path(args.output_json)
-        self.runner.ensure_parent(out_json)
+        out_json = self.runner.ensure_parent(Path(args.output_json))
         report = {
             "align_mode": str(args.align_mode),
             "kind": kind,
@@ -989,7 +1134,8 @@ class AlignmentExperiment:
                 "fun": float(objective(x_final)) if opt is None else float(opt.fun),
             },
         }
-        out_json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        with open(out_json, "w", encoding="utf-8") as _f:
+            _f.write(json.dumps(report, ensure_ascii=False, indent=2))
 
         fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
         axes[0].hist(d_identity, bins=60, alpha=0.55, label="identity")
@@ -1007,9 +1153,9 @@ class AlignmentExperiment:
         axes[1].set_ylabel("y")
         axes[1].axis("equal")
         fig.tight_layout()
-        out_png = Path(args.output_png)
-        self.runner.ensure_parent(out_png)
-        fig.savefig(out_png, dpi=140)
+        out_png = self.runner.ensure_parent(Path(args.output_png))
+        with open(out_png, "wb") as _fp:
+            fig.savefig(_fp, dpi=140, format="png")
         plt.close(fig)
 
         print(f"[align] 完成，结果写入: {out_json}")
@@ -1418,8 +1564,7 @@ class NearestRegionExperiment:
                     f"occ={component_summaries[0]['total_occlusion_length']:.4f}m"
                 )
 
-        out_json = Path(args.output_json)
-        self.runner.ensure_parent(out_json)
+        out_json = self.runner.ensure_parent(Path(args.output_json))
         payload = {
             "kind": kind,
             "weld_start_point": weld_start_pb.tolist(),
@@ -1476,7 +1621,8 @@ class NearestRegionExperiment:
                 "grad_side_min_ratio": float(getattr(args, "grad_side_min_ratio", ExperimentParameters.NEAR_GRAD_SIDE_MIN_RATIO)),
             },
         }
-        out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        with open(out_json, "w", encoding="utf-8") as _f:
+            _f.write(json.dumps(payload, ensure_ascii=False, indent=2))
 
         fig = plt.figure(figsize=(11.5, 5.4))
         ax = fig.add_subplot(121, projection="3d")
@@ -1528,9 +1674,9 @@ class NearestRegionExperiment:
             ax_bar.set_axis_off()
 
         fig.tight_layout()
-        out_png = Path(args.output_png)
-        self.runner.ensure_parent(out_png)
-        fig.savefig(out_png, dpi=140)
+        out_png = self.runner.ensure_parent(Path(args.output_png))
+        with open(out_png, "wb") as _fp:
+            fig.savefig(_fp, dpi=140, format="png")
         plt.close(fig)
         print(f"[nearest] done -> {out_json}")
         if not topk:
@@ -1553,17 +1699,21 @@ class InitConfigExperiment:
         self.settings = settings
 
     @staticmethod
-    def _has_self_collision(robot: JakaRobot) -> bool:
+    def _has_self_collision(robot: JakaRobot, penetration_thresh: float = -0.001) -> bool:
+        """检测机器人自碰撞（含龙门架与臂体之间的碰撞）。
+        penetration_thresh: 穿透距离阈值，负值表示允许极小穿透噪声。"""
         p.performCollisionDetection()
         contacts = p.getContactPoints(bodyA=robot.body_id, bodyB=robot.body_id)
         for c in contacts:
             la = int(c[3])
             lb = int(c[4])
+            dist = float(c[8])
             if la == lb:
                 continue
             if abs(la - lb) <= 1:
                 continue
-            return True
+            if dist < penetration_thresh:
+                return True
         return False
 
     @staticmethod
@@ -1576,6 +1726,17 @@ class InitConfigExperiment:
             if float(closest["signed_dist"]) < float(min_clearance):
                 return True
         return False
+
+    @staticmethod
+    def _minimum_external_clearance(robot: JakaRobot, workpiece: WorkpieceModel, check_links: list[int], min_clearance: float) -> float:
+        p.performCollisionDetection()
+        best = float("inf")
+        for li in check_links:
+            closest = robot.get_closest_points_to_obstacle(li, workpiece.body_id, max_dist=max(0.5, min_clearance * 8.0))
+            if closest is None:
+                continue
+            best = min(best, float(closest["signed_dist"]))
+        return best
 
     def _build_occupancy_kernel(
         self,
@@ -1628,56 +1789,112 @@ class InitConfigExperiment:
 
             mutable_joints = list(robot.revolute_joints)
             mutable_indices = [active_idx[j] for j in mutable_joints if j in active_idx]
-            best = None
-            feasible_count = 0
-            occ_counts = []
-            for _ in range(int(args.num_samples)):
-                q = np.array(q0, dtype=float)
-                for idx in mutable_indices:
-                    info = p.getJointInfo(robot.body_id, int(robot.active_joints[idx]))
-                    lo = float(info[8])
-                    hi = float(info[9])
-                    delta = float(rng.normal(0.0, args.sample_std))
-                    q[idx] = q[idx] + delta
-                    if hi > lo:
-                        q[idx] = float(np.clip(q[idx], lo, hi))
-                robot.set_joint_state(q, dq=np.zeros_like(q))
 
-                if self._has_self_collision(robot):
-                    continue
-                if not bool(args.skip_external_collision):
-                    if self._external_collision(robot, workpiece, kernel_links, min_clearance=float(args.min_clearance)):
+            joint_limits = []
+            for idx in mutable_indices:
+                info = p.getJointInfo(robot.body_id, int(robot.active_joints[idx]))
+                joint_limits.append((float(info[8]), float(info[9])))
+
+            def _sample_and_eval(q_center, sigma, n_samples):
+                results = []
+                for _ in range(n_samples):
+                    q = np.array(q_center, dtype=float)
+                    for i, idx in enumerate(mutable_indices):
+                        lo, hi = joint_limits[i]
+                        q[idx] = q[idx] + float(rng.normal(0.0, sigma))
+                        if hi > lo:
+                            q[idx] = float(np.clip(q[idx], lo, hi))
+                    robot.set_joint_state(q, dq=np.zeros_like(q))
+                    if self._has_self_collision(robot):
                         continue
+                    env_clearance = float("inf")
+                    if not bool(args.skip_external_collision):
+                        env_clearance = self._minimum_external_clearance(
+                            robot,
+                            workpiece,
+                            kernel_links,
+                            min_clearance=float(args.min_clearance),
+                        )
+                        if env_clearance < float(args.min_clearance):
+                            continue
+                    kernel_offsets, occ_count, aabb_vol, aabb_lo, aabb_hi = self._build_occupancy_kernel(
+                        robot=robot, selected_links=kernel_links, voxel=float(args.voxel),
+                    )
+                    aabb_size = aabb_hi - aabb_lo
+                    aabb_max_dim = float(np.max(aabb_size))
+                    half_ext = np.maximum(np.abs(aabb_lo), np.abs(aabb_hi))
+                    bbox_radius = float(np.linalg.norm(half_ext))
+                    self_clearance = compute_self_collision_clearance(
+                        robot,
+                        link_indices=robot.revolute_joints,
+                        min_index_gap=2,
+                        query_distance=float(getattr(args, "self_collision_query_distance", 0.12)),
+                    )
+                    clearance_entries = [{"kind": "self_collision", "distance": float(self_clearance)}]
+                    if np.isfinite(env_clearance):
+                        clearance_entries.append({"kind": "environment", "distance": float(env_clearance)})
+                    quality_metrics = evaluate_configuration_quality(
+                        robot,
+                        q,
+                        dq=np.zeros_like(q),
+                        motion_component=str(getattr(args, "motion_component", "linear")),
+                        clearance_summary=summarize_clearance_entries(clearance_entries),
+                        joint_limits=joint_limits,
+                    )
+                    results.append({
+                        "q": q.tolist(),
+                        "occupancy_count": int(occ_count),
+                        "aabb_volume": float(aabb_vol),
+                        "aabb_max_dim": aabb_max_dim,
+                        "aabb_min": aabb_lo.tolist(),
+                        "aabb_max": aabb_hi.tolist(),
+                        "bbox_radius": bbox_radius,
+                        "kernel_offsets": kernel_offsets,
+                        "configuration_quality": quality_metrics,
+                        "inverse_condition": float(quality_metrics["inverse_condition"]),
+                        "self_collision_distance": float(quality_metrics["self_collision_distance"]),
+                        "joint_limit_margin": float(quality_metrics["joint_limit_margin"]),
+                        "environment_distance": float(quality_metrics["environment_distance"]),
+                    })
+                return results
 
-                kernel_offsets, occ_count, aabb_vol, aabb_lo, aabb_hi = self._build_occupancy_kernel(
-                    robot=robot,
-                    selected_links=kernel_links,
-                    voxel=float(args.voxel),
+            # Phase 1: wide search
+            print(f"[init-config] Phase 1: {args.num_samples} samples, sigma={args.sample_std:.2f}")
+            phase1 = _sample_and_eval(q0, float(args.sample_std), int(args.num_samples))
+            feasible_count = len(phase1)
+            occ_counts = [r["aabb_max_dim"] for r in phase1]
+            print(f"[init-config] Phase 1 feasible: {feasible_count} / {args.num_samples}")
+
+            # Phase 2: local refinement around top-K candidates
+            refine_top_k = int(getattr(args, "refine_top_k", 10))
+            refine_samples = int(getattr(args, "refine_samples", 300))
+            refine_std = float(getattr(args, "refine_std", 0.15))
+            if phase1 and refine_top_k > 0 and refine_samples > 0:
+                phase1_sorted = _rank_init_config_candidates(
+                    phase1,
+                    selection_weights=getattr(args, "selection_weights", None),
                 )
-                aabb_size = aabb_hi - aabb_lo
-                aabb_max_dim = float(np.max(aabb_size))
-                half_ext = np.maximum(np.abs(aabb_lo), np.abs(aabb_hi))
-                bbox_radius = float(np.linalg.norm(half_ext))
-                rec = {
-                    "q": q.tolist(),
-                    "occupancy_count": int(occ_count),
-                    "aabb_volume": float(aabb_vol),
-                    "aabb_max_dim": aabb_max_dim,
-                    "aabb_min": aabb_lo.tolist(),
-                    "aabb_max": aabb_hi.tolist(),
-                    "bbox_radius": bbox_radius,
-                    "kernel_offsets": kernel_offsets,
-                }
-                feasible_count += 1
-                occ_counts.append(aabb_max_dim)
-                if best is None or aabb_max_dim < best["aabb_max_dim"]:
-                    best = rec
+                top_k = phase1_sorted[:refine_top_k]
+                per_seed = max(refine_samples // refine_top_k, 1)
+                print(f"[init-config] Phase 2: refine top-{refine_top_k}, {per_seed} samples/seed, sigma={refine_std:.2f}")
+                for seed_rec in top_k:
+                    q_seed = np.array(seed_rec["q"], dtype=float)
+                    local = _sample_and_eval(q_seed, refine_std, per_seed)
+                    phase1.extend(local)
+                    occ_counts.extend([r["aabb_max_dim"] for r in local])
+                    feasible_count += len(local)
+                print(f"[init-config] Phase 2 added {feasible_count - len(phase1_sorted)} feasible samples")
 
-            if best is None:
+            if not phase1:
                 raise RuntimeError("未找到满足条件的初始构型，请放宽采样范围或碰撞阈值。")
 
-            out_npz = Path(args.output_npz)
-            self.runner.ensure_parent(out_npz)
+            ranked_candidates = _rank_init_config_candidates(
+                phase1,
+                selection_weights=getattr(args, "selection_weights", None),
+            )
+            best = ranked_candidates[0]
+
+            out_npz = self.runner.ensure_parent(Path(args.output_npz))
             np.savez_compressed(
                 out_npz,
                 q_best=np.asarray(best["q"], dtype=float),
@@ -1698,6 +1915,13 @@ class InitConfigExperiment:
             )
             print(f"[init-config] AABB: {best['aabb_min']} .. {best['aabb_max']}")
             print(f"[init-config] bbox_radius (rear-6 circumscribed): {best['bbox_radius']:.4f} m")
+            print(
+                "[init-config] quality: "
+                f"inverse_condition={best['configuration_quality']['inverse_condition']:.4f}, "
+                f"joint_margin={best['configuration_quality']['joint_limit_margin']:.4f}, "
+                f"self_clearance={best['configuration_quality']['self_collision_distance']:.4f} m, "
+                f"score={best['selection_score']:.4f}"
+            )
 
             q_best = best["q"]
             joint_entries = []
@@ -1714,8 +1938,7 @@ class InitConfigExperiment:
                             "angle_deg": float(np.degrees(rad)),
                         }
                     )
-            out_json = Path(args.output_json)
-            self.runner.ensure_parent(out_json)
+            out_json = self.runner.ensure_parent(Path(args.output_json))
             report = {
                 "best_joint_config": joint_entries,
                 "occupancy_count": int(best["occupancy_count"]),
@@ -1726,8 +1949,12 @@ class InitConfigExperiment:
                 "bbox_radius_m": float(best["bbox_radius"]),
                 "feasible_samples": int(feasible_count),
                 "total_samples": int(args.num_samples),
+                "selection_score": float(best["selection_score"]),
+                "selection_score_components": best["selection_score_components"],
+                "configuration_quality": best["configuration_quality"],
             }
-            out_json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            with open(out_json, "w", encoding="utf-8") as _f:
+                _f.write(json.dumps(report, ensure_ascii=False, indent=2))
             print(f"[init-config] JSON 报告写入: {out_json}")
 
             fig = plt.figure(figsize=(11, 4.8))
@@ -1750,9 +1977,9 @@ class InitConfigExperiment:
             ax2.set_xlabel("AABB max dimension (m)")
             ax2.set_ylabel("count")
             fig.tight_layout()
-            out_png = Path(args.output_png)
-            self.runner.ensure_parent(out_png)
-            fig.savefig(out_png, dpi=140)
+            out_png = self.runner.ensure_parent(Path(args.output_png))
+            with open(out_png, "wb") as _fp:
+                fig.savefig(_fp, dpi=140, format="png")
             plt.close(fig)
             print(f"[init-config] 可视化写入: {out_png}")
 
@@ -2162,6 +2389,9 @@ class PlannerExperiment:
                 kind=kind,
                 safe_oob=True,
             ),
+            "approach_line_sdf": None,
+            "approach_line_d": None,
+            "approach_line_feasible": None,
         }
         ee_raw = np.asarray(ee_path_sdf_arr, dtype=float).reshape(-1, 3)
         approach_raw = np.asarray(retreat_path_sdf_arr[::-1], dtype=float).reshape(-1, 3)
@@ -2180,11 +2410,191 @@ class PlannerExperiment:
         if approach_raw.shape[0] >= 2:
             app_smooth = _line_resample(approach_raw[0], approach_raw[-1], n_samples_per_seg)
             app_d = self.runner.query_field(field, app_smooth, kind=kind, safe_oob=True)
-            if float(np.min(app_d)) >= float(approach_min_sdf):
-                result["approach_controls_sdf"] = np.vstack([approach_raw[0], approach_raw[-1]])
-                result["approach_smoothed_sdf"] = app_smooth
-                result["approach_smoothed_d"] = app_d
+            result["approach_line_sdf"] = app_smooth
+            result["approach_line_d"] = app_d
+            result["approach_line_feasible"] = bool(float(np.min(app_d)) >= float(approach_min_sdf))
+            result["approach_controls_sdf"] = np.vstack([approach_raw[0], approach_raw[-1]])
+            result["approach_smoothed_sdf"] = app_smooth
+            result["approach_smoothed_d"] = app_d
         return result
+
+    def _plan_escape_bundle(
+        self,
+        *,
+        field,
+        kind: str,
+        args,
+        weld_point_pb: np.ndarray | None,
+        ee_start_pb: np.ndarray,
+        field_bbox_min: np.ndarray,
+        field_bbox_max: np.ndarray,
+    ) -> dict:
+        empty = {
+            "weld_point_pb": None,
+            "retreat_path_pb": None,
+            "retreat_vals": None,
+            "retreat_goal_pb": None,
+            "ee_path_pb": None,
+            "ee_d_path": None,
+            "ee_smoothed_pb": None,
+            "ee_smoothed_d": None,
+            "ee_control_points_pb": None,
+            "approach_smoothed_pb": None,
+            "approach_smoothed_d": None,
+            "approach_control_points_pb": None,
+            "approach_line_pb": None,
+            "approach_line_d": None,
+            "approach_line_feasible": None,
+        }
+        if weld_point_pb is None:
+            return empty
+
+        weld_point_pb = np.asarray(weld_point_pb, dtype=float).reshape(3)
+        weld_point_sdf = self.runner.pb2sdf(weld_point_pb).reshape(3)
+        retreat_path_sdf, retreat_vals, retreat_goal_sdf = self._gradient_backtrack_escape(
+            field,
+            weld_point_sdf,
+            kind,
+            target_sdf=float(getattr(args, "ee_target_sdf", ExperimentParameters.PLAN_EE_TARGET_SDF)),
+            init_step=float(getattr(args, "ee_backtrack_init_step", ExperimentParameters.PLAN_EE_BACKTRACK_INIT_STEP)),
+            min_step=float(getattr(args, "ee_backtrack_min_step", ExperimentParameters.PLAN_EE_BACKTRACK_MIN_STEP)),
+            shrink=float(getattr(args, "ee_backtrack_shrink", ExperimentParameters.PLAN_EE_BACKTRACK_SHRINK)),
+            max_iters=int(getattr(args, "ee_backtrack_max_iters", ExperimentParameters.PLAN_EE_BACKTRACK_MAX_ITERS)),
+            curv_eps=float(getattr(args, "ee_backtrack_curv_eps", ExperimentParameters.PLAN_EE_BACKTRACK_CURV_EPS)),
+            armijo_c1=float(getattr(args, "ee_backtrack_armijo_c1", ExperimentParameters.PLAN_EE_BACKTRACK_ARMIJO_C1)),
+        )
+        retreat_path_sdf_arr = np.asarray(retreat_path_sdf, dtype=float)
+        retreat_path_pb = self.runner.sdf2pb(retreat_path_sdf_arr)
+        retreat_goal_pb = self.runner.sdf2pb(np.asarray(retreat_goal_sdf, dtype=float).reshape(1, 3)).reshape(3)
+
+        ee_start_sdf = self.runner.pb2sdf(ee_start_pb).reshape(3)
+        ee_search_goal = np.asarray(retreat_goal_sdf, dtype=float).reshape(3)
+        ee_clearance = float(getattr(args, "ee_min_clearance", ExperimentParameters.PLAN_EE_MIN_CLEARANCE))
+        bmin_ee = np.maximum(
+            np.minimum(ee_start_sdf, ee_search_goal) - 0.20,
+            np.asarray(field_bbox_min, dtype=float) + float(args.bound_margin),
+        )
+        bmax_ee = np.minimum(
+            np.maximum(ee_start_sdf, ee_search_goal) + 0.20,
+            np.asarray(field_bbox_max, dtype=float) - float(args.bound_margin),
+        )
+        ee_rrt_start = ee_start_sdf.copy()
+        ee_rrt_goal = ee_search_goal.copy()
+        if bool(args.auto_fix_endpoints):
+            ee_rrt_start, _ = self.runner.auto_fix_point_if_infeasible(
+                field,
+                ee_rrt_start,
+                bmin_ee,
+                bmax_ee,
+                kind,
+                ee_clearance,
+                float(args.endpoint_fix_radius),
+                float(args.endpoint_fix_step),
+            )
+            ee_rrt_goal, ok_goal_ee = self.runner.auto_fix_point_if_infeasible(
+                field,
+                ee_rrt_goal,
+                bmin_ee,
+                bmax_ee,
+                kind,
+                ee_clearance,
+                float(args.endpoint_fix_radius),
+                float(args.endpoint_fix_step),
+            )
+            if not ok_goal_ee:
+                raise RuntimeError("末端 retreat 目标点在邻域内无法满足 EE SDF 阈值。")
+
+        ee_path_sdf = self._rrt_star_plan(
+            field=field,
+            start=ee_rrt_start,
+            goal=ee_rrt_goal,
+            bounds_min=bmin_ee,
+            bounds_max=bmax_ee,
+            kind=kind,
+            clearance=ee_clearance,
+            step_size=float(getattr(args, "ee_step_size", ExperimentParameters.PLAN_EE_STEP_SIZE)),
+            near_radius=float(getattr(args, "ee_near_radius", ExperimentParameters.PLAN_EE_NEAR_RADIUS)),
+            goal_sample_prob=float(args.goal_sample_prob),
+            max_iter=int(getattr(args, "ee_max_iter", ExperimentParameters.PLAN_EE_MAX_ITER)),
+            edge_step=float(getattr(args, "ee_edge_check_step", ExperimentParameters.PLAN_EE_EDGE_CHECK_STEP)),
+            goal_tol=float(getattr(args, "ee_goal_tolerance", ExperimentParameters.PLAN_EE_GOAL_TOLERANCE)),
+        )
+        if not ee_path_sdf:
+            raise RuntimeError("末端 RRT 路径未找到。")
+        ee_path_sdf = self._shortcut_smooth(
+            ee_path_sdf,
+            field=field,
+            kind=kind,
+            clearance=ee_clearance,
+            edge_step=float(getattr(args, "ee_edge_check_step", ExperimentParameters.PLAN_EE_EDGE_CHECK_STEP)),
+            iters=int(args.smooth_iters),
+        )
+        ee_path_sdf = self._resample_path(
+            ee_path_sdf,
+            float(getattr(args, "ee_resample_spacing", ExperimentParameters.PLAN_EE_RESAMPLE_SPACING)),
+        )
+        ee_path_sdf_arr = np.asarray(ee_path_sdf, dtype=float)
+        ee_d_path = self.runner.query_field(field, ee_path_sdf_arr, kind=kind, safe_oob=True)
+        ee_path_pb = self.runner.sdf2pb(ee_path_sdf_arr)
+
+        smooth_info = self._smooth_ee_paths(
+            field,
+            kind,
+            ee_path_sdf_arr,
+            retreat_path_sdf_arr,
+            ee_clearance=ee_clearance,
+            approach_min_sdf=float(
+                getattr(
+                    args,
+                    "ee_bezier_approach_min_sdf",
+                    ExperimentParameters.PLAN_EE_BEZIER_APPROACH_MIN_SDF,
+                )
+            ),
+            n_samples_per_seg=int(
+                getattr(
+                    args,
+                    "ee_bezier_samples_per_seg",
+                    ExperimentParameters.PLAN_EE_BEZIER_SAMPLES_PER_SEG,
+                )
+            ),
+        )
+        ee_smoothed_pb = self.runner.sdf2pb(np.asarray(smooth_info["ee_smoothed_sdf"], dtype=float))
+        ee_smoothed_d = np.asarray(smooth_info["ee_smoothed_d"], dtype=float)
+        ee_control_points_pb = None
+        if smooth_info["ee_controls_sdf"] is not None:
+            ee_control_points_pb = self.runner.sdf2pb(np.asarray(smooth_info["ee_controls_sdf"], dtype=float))
+
+        approach_smoothed_pb = self.runner.sdf2pb(np.asarray(smooth_info["approach_smoothed_sdf"], dtype=float))
+        approach_smoothed_d = np.asarray(smooth_info["approach_smoothed_d"], dtype=float)
+        approach_control_points_pb = None
+        if smooth_info["approach_controls_sdf"] is not None:
+            approach_control_points_pb = self.runner.sdf2pb(np.asarray(smooth_info["approach_controls_sdf"], dtype=float))
+
+        approach_line_pb = None
+        approach_line_d = None
+        approach_line_feasible = None
+        if smooth_info["approach_line_sdf"] is not None:
+            approach_line_d = np.asarray(smooth_info["approach_line_d"], dtype=float)
+            approach_line_pb = self.runner.sdf2pb(np.asarray(smooth_info["approach_line_sdf"], dtype=float))
+            approach_line_feasible = bool(smooth_info["approach_line_feasible"])
+
+        return {
+            "weld_point_pb": weld_point_pb,
+            "retreat_path_pb": retreat_path_pb,
+            "retreat_vals": np.asarray(retreat_vals, dtype=float),
+            "retreat_goal_pb": retreat_goal_pb,
+            "ee_path_pb": ee_path_pb,
+            "ee_d_path": np.asarray(ee_d_path, dtype=float),
+            "ee_smoothed_pb": ee_smoothed_pb,
+            "ee_smoothed_d": ee_smoothed_d,
+            "ee_control_points_pb": ee_control_points_pb,
+            "approach_smoothed_pb": approach_smoothed_pb,
+            "approach_smoothed_d": approach_smoothed_d,
+            "approach_control_points_pb": approach_control_points_pb,
+            "approach_line_pb": approach_line_pb,
+            "approach_line_d": approach_line_d,
+            "approach_line_feasible": approach_line_feasible,
+        }
 
     def run(self) -> None:
         args = self.settings
@@ -2200,22 +2610,7 @@ class PlannerExperiment:
         clearance = float(getattr(args, "min_clearance", ExperimentParameters.PLAN_MIN_CLEARANCE))
         print(f"[plan] clearance = {clearance:.4f}m")
 
-        if args.start:
-            start = self.runner.pb2sdf(self.runner.parse_vec3(args.start)).reshape(3)
-        else:
-            p.connect(p.DIRECT)
-            try:
-                cfg = ExperimentConfig()
-                robot, _ = self.runner.make_robot_and_workpiece(cfg)
-                if q_best is not None:
-                    robot.set_joint_state(q_best, dq=np.zeros_like(q_best))
-                base_pos, _ = robot.get_robobase_pose()
-                start_pb = np.asarray(base_pos, dtype=float)
-                start = self.runner.pb2sdf(start_pb).reshape(3)
-                print(f"[plan] start robobase PB={start_pb.tolist()} -> SDF={start.tolist()}")
-            finally:
-                p.disconnect()
-
+        # goal first — needed to compute EE-based start
         if args.goal:
             goal = self.runner.pb2sdf(self.runner.parse_vec3(args.goal)).reshape(3)
         elif nearest_region_as_goal and Path(nearest_json_path).exists():
@@ -2230,6 +2625,26 @@ class PlannerExperiment:
                 print("[plan] WARNING: nearest-region JSON has no top_k, using bbox default")
         else:
             goal = np.asarray(field.bbox_max, dtype=float) - 0.15
+
+        if args.start:
+            start = self.runner.pb2sdf(self.runner.parse_vec3(args.start)).reshape(3)
+        else:
+            p.connect(p.DIRECT)
+            try:
+                cfg = ExperimentConfig()
+                robot, _ = self.runner.make_robot_and_workpiece(cfg)
+                if q_best is not None:
+                    q_default, _ = robot.get_joint_state()
+                    q_init = q_default.copy()
+                    q_init[robot.n_pris:] = q_best[robot.n_pris:]
+                    robot.set_joint_state(q_init, np.zeros_like(q_init))
+                base_pos, _ = robot.get_robobase_pose()
+                start_pb = np.asarray(base_pos, dtype=float)
+                print(f"[plan] start robobase (initial gantry) PB={start_pb.tolist()}")
+                start = self.runner.pb2sdf(start_pb).reshape(3)
+                print(f"[plan] start SDF={start.tolist()}")
+            finally:
+                p.disconnect()
 
         via = None
         if args.via_point:
@@ -2328,25 +2743,36 @@ class PlannerExperiment:
         goal_pb_used = self.runner.sdf2pb(np.asarray(goal, dtype=float).reshape(1, 3)).reshape(3)
 
         q_plan_final = None
-        ee_path_pb = None
-        ee_d_path = None
         weld_start_pb = None
-        retreat_path_pb = None
-        retreat_goal_pb = None
-        retreat_vals = None
-        retreat_path_sdf_arr = None
-        ee_path_sdf_arr = None
-        ee_smoothed_pb = None
-        ee_smoothed_d = None
-        ee_control_points_pb = None
-        approach_smoothed_pb = None
-        approach_smoothed_d = None
-        approach_control_points_pb = None
+        weld_goal_pb = None
+        start_bundle = self._plan_escape_bundle(
+            field=field,
+            kind=kind,
+            args=args,
+            weld_point_pb=None,
+            ee_start_pb=np.zeros(3, dtype=float),
+            field_bbox_min=np.asarray(field.bbox_min, dtype=float),
+            field_bbox_max=np.asarray(field.bbox_max, dtype=float),
+        )
+        end_bundle = self._plan_escape_bundle(
+            field=field,
+            kind=kind,
+            args=args,
+            weld_point_pb=None,
+            ee_start_pb=np.zeros(3, dtype=float),
+            field_bbox_min=np.asarray(field.bbox_min, dtype=float),
+            field_bbox_max=np.asarray(field.bbox_max, dtype=float),
+        )
         if Path(nearest_json_path).exists():
             nr_data = json.loads(Path(nearest_json_path).read_text(encoding="utf-8"))
             weld_start_raw = nr_data.get("weld_start_point")
             if weld_start_raw is not None:
                 weld_start_pb = np.asarray(weld_start_raw, dtype=float).reshape(3)
+            weld_goal_raw = nr_data.get("weld_goal_point")
+            if weld_goal_raw is not None:
+                weld_goal_pb = np.asarray(weld_goal_raw, dtype=float).reshape(3)
+        mid_robobase_pb = None
+        mid_ee_pb = None
         if q_best is not None:
             p.connect(p.DIRECT)
             try:
@@ -2354,204 +2780,204 @@ class PlannerExperiment:
                 robot, workpiece = self.runner.make_robot_and_workpiece(cfg)
                 q_plan_final = self.runner.move_robot_base_to_position(robot, goal_pb_used, q_seed=q_best)
                 base_after_pb, _ = robot.get_robobase_pose()
-                ee_start_pb, ee_start_quat = robot.get_ee_pose()
-                print(f"[plan] robobase moved to PB={np.asarray(base_after_pb, dtype=float).tolist()}")
+                ee_start_pb, _ = robot.get_ee_pose()
+                mid_robobase_pb = np.asarray(base_after_pb, dtype=float)
+                mid_ee_pb = np.asarray(ee_start_pb, dtype=float)
+                print(f"[plan] mid robobase PB={mid_robobase_pb.tolist()}")
+                print(f"[plan] mid EE      PB={mid_ee_pb.tolist()}")
                 if weld_start_pb is not None:
-                    weld_start_sdf = self.runner.pb2sdf(weld_start_pb).reshape(3)
-                    retreat_path_sdf, retreat_vals, retreat_goal_sdf = self._gradient_backtrack_escape(
-                        field,
-                        weld_start_sdf,
-                        kind,
-                        target_sdf=float(getattr(args, "ee_target_sdf", ExperimentParameters.PLAN_EE_TARGET_SDF)),
-                        init_step=float(getattr(args, "ee_backtrack_init_step", ExperimentParameters.PLAN_EE_BACKTRACK_INIT_STEP)),
-                        min_step=float(getattr(args, "ee_backtrack_min_step", ExperimentParameters.PLAN_EE_BACKTRACK_MIN_STEP)),
-                        shrink=float(getattr(args, "ee_backtrack_shrink", ExperimentParameters.PLAN_EE_BACKTRACK_SHRINK)),
-                        max_iters=int(getattr(args, "ee_backtrack_max_iters", ExperimentParameters.PLAN_EE_BACKTRACK_MAX_ITERS)),
-                        curv_eps=float(getattr(args, "ee_backtrack_curv_eps", ExperimentParameters.PLAN_EE_BACKTRACK_CURV_EPS)),
-                        armijo_c1=float(getattr(args, "ee_backtrack_armijo_c1", ExperimentParameters.PLAN_EE_BACKTRACK_ARMIJO_C1)),
-                    )
-                    retreat_path_sdf_arr = np.asarray(retreat_path_sdf, dtype=float)
-                    retreat_path_pb = self.runner.sdf2pb(retreat_path_sdf_arr)
-                    retreat_goal_pb = self.runner.sdf2pb(np.asarray(retreat_goal_sdf, dtype=float).reshape(1, 3)).reshape(3)
-                    print(
-                        f"[plan] weld-start escape: start_sdf={float(retreat_vals[0]):.4f}m -> "
-                        f"end_sdf={float(retreat_vals[-1]):.4f}m, steps={len(retreat_path_sdf)}"
-                    )
-
-                    ee_start_sdf = self.runner.pb2sdf(ee_start_pb).reshape(3)
-                    ee_search_goal = np.asarray(retreat_goal_sdf, dtype=float).reshape(3)
-                    ee_clearance = float(getattr(args, "ee_min_clearance", ExperimentParameters.PLAN_EE_MIN_CLEARANCE))
-                    bmin_ee = np.maximum(
-                        np.minimum(ee_start_sdf, ee_search_goal) - 0.20,
-                        np.asarray(field.bbox_min, dtype=float) + float(args.bound_margin),
-                    )
-                    bmax_ee = np.minimum(
-                        np.maximum(ee_start_sdf, ee_search_goal) + 0.20,
-                        np.asarray(field.bbox_max, dtype=float) - float(args.bound_margin),
-                    )
-                    ee_rrt_start = ee_start_sdf.copy()
-                    ee_rrt_goal = ee_search_goal.copy()
-                    if bool(args.auto_fix_endpoints):
-                        ee_rrt_start, _ = self.runner.auto_fix_point_if_infeasible(
-                            field,
-                            ee_rrt_start,
-                            bmin_ee,
-                            bmax_ee,
-                            kind,
-                            ee_clearance,
-                            float(args.endpoint_fix_radius),
-                            float(args.endpoint_fix_step),
-                        )
-                        ee_rrt_goal, ok_goal_ee = self.runner.auto_fix_point_if_infeasible(
-                            field,
-                            ee_rrt_goal,
-                            bmin_ee,
-                            bmax_ee,
-                            kind,
-                            ee_clearance,
-                            float(args.endpoint_fix_radius),
-                            float(args.endpoint_fix_step),
-                        )
-                        if not ok_goal_ee:
-                            raise RuntimeError("末端 retreat 目标点在邻域内无法满足 EE SDF 阈值。")
-                    ee_path_sdf = self._rrt_star_plan(
-                        field=field,
-                        start=ee_rrt_start,
-                        goal=ee_rrt_goal,
-                        bounds_min=bmin_ee,
-                        bounds_max=bmax_ee,
-                        kind=kind,
-                        clearance=ee_clearance,
-                        step_size=float(getattr(args, "ee_step_size", ExperimentParameters.PLAN_EE_STEP_SIZE)),
-                        near_radius=float(getattr(args, "ee_near_radius", ExperimentParameters.PLAN_EE_NEAR_RADIUS)),
-                        goal_sample_prob=float(args.goal_sample_prob),
-                        max_iter=int(getattr(args, "ee_max_iter", ExperimentParameters.PLAN_EE_MAX_ITER)),
-                        edge_step=float(getattr(args, "ee_edge_check_step", ExperimentParameters.PLAN_EE_EDGE_CHECK_STEP)),
-                        goal_tol=float(getattr(args, "ee_goal_tolerance", ExperimentParameters.PLAN_EE_GOAL_TOLERANCE)),
-                    )
-                    if not ee_path_sdf:
-                        raise RuntimeError("末端 RRT 路径未找到。")
-                    ee_path_sdf = self._shortcut_smooth(
-                        ee_path_sdf,
+                    start_bundle = self._plan_escape_bundle(
                         field=field,
                         kind=kind,
-                        clearance=ee_clearance,
-                        edge_step=float(getattr(args, "ee_edge_check_step", ExperimentParameters.PLAN_EE_EDGE_CHECK_STEP)),
-                        iters=int(args.smooth_iters),
+                        args=args,
+                        weld_point_pb=weld_start_pb,
+                        ee_start_pb=ee_start_pb,
+                        field_bbox_min=np.asarray(field.bbox_min, dtype=float),
+                        field_bbox_max=np.asarray(field.bbox_max, dtype=float),
                     )
-                    ee_path_sdf = self._resample_path(
-                        ee_path_sdf,
-                        float(getattr(args, "ee_resample_spacing", ExperimentParameters.PLAN_EE_RESAMPLE_SPACING)),
-                    )
-                    ee_path_sdf_arr = np.asarray(ee_path_sdf, dtype=float)
-                    ee_d_path = self.runner.query_field(field, ee_path_sdf_arr, kind=kind, safe_oob=True)
-                    ee_path_pb = self.runner.sdf2pb(ee_path_sdf_arr)
                     print(
-                        f"[plan] ee path: {len(ee_path_sdf)} waypoints, "
-                        f"min_sdf={float(np.min(ee_d_path)):.4f}m, start={np.asarray(ee_start_pb, dtype=float).tolist()}, "
-                        f"goal={np.asarray(retreat_goal_pb, dtype=float).tolist()}"
+                        f"[plan] weld-start escape: start_sdf={float(start_bundle['retreat_vals'][0]):.4f}m -> "
+                        f"end_sdf={float(start_bundle['retreat_vals'][-1]):.4f}m, "
+                        f"steps={len(start_bundle['retreat_path_pb'])}"
                     )
-                    smooth_info = self._smooth_ee_paths(
-                        field,
-                        kind,
-                        ee_path_sdf_arr,
-                        retreat_path_sdf_arr,
-                        ee_clearance=ee_clearance,
-                        approach_min_sdf=float(
-                            getattr(
-                                args,
-                                "ee_bezier_approach_min_sdf",
-                                ExperimentParameters.PLAN_EE_BEZIER_APPROACH_MIN_SDF,
-                            )
-                        ),
-                        n_samples_per_seg=int(
-                            getattr(
-                                args,
-                                "ee_bezier_samples_per_seg",
-                                ExperimentParameters.PLAN_EE_BEZIER_SAMPLES_PER_SEG,
-                            )
-                        ),
-                    )
-                    ee_smoothed_d = np.asarray(smooth_info["ee_smoothed_d"], dtype=float)
-                    ee_smoothed_pb = self.runner.sdf2pb(np.asarray(smooth_info["ee_smoothed_sdf"], dtype=float))
-                    if smooth_info["ee_controls_sdf"] is not None:
-                        ee_control_points_pb = self.runner.sdf2pb(np.asarray(smooth_info["ee_controls_sdf"], dtype=float))
-                    approach_smoothed_d = np.asarray(smooth_info["approach_smoothed_d"], dtype=float)
-                    approach_smoothed_pb = self.runner.sdf2pb(np.asarray(smooth_info["approach_smoothed_sdf"], dtype=float))
-                    if smooth_info["approach_controls_sdf"] is not None:
-                        approach_control_points_pb = self.runner.sdf2pb(
-                            np.asarray(smooth_info["approach_controls_sdf"], dtype=float)
-                        )
                     print(
-                        f"[plan] bezier smooth: ee_min={float(np.min(ee_smoothed_d)):.4f}m, "
-                        f"approach_min={float(np.min(approach_smoothed_d)):.4f}m"
+                        f"[plan] weld-start ee path: {len(start_bundle['ee_path_pb'])} waypoints, "
+                        f"min_sdf={float(np.min(start_bundle['ee_d_path'])):.4f}m, "
+                        f"goal={np.asarray(start_bundle['retreat_goal_pb'], dtype=float).tolist()}"
                     )
-                    _ = ee_start_quat
-                    _ = workpiece
+                    print(
+                        f"[plan] weld-start smooth: ee_min={float(np.min(start_bundle['ee_smoothed_d'])):.4f}m, "
+                        f"approach_min={float(np.min(start_bundle['approach_smoothed_d'])):.4f}m"
+                    )
+                if weld_goal_pb is not None:
+                    end_bundle = self._plan_escape_bundle(
+                        field=field,
+                        kind=kind,
+                        args=args,
+                        weld_point_pb=weld_goal_pb,
+                        ee_start_pb=ee_start_pb,
+                        field_bbox_min=np.asarray(field.bbox_min, dtype=float),
+                        field_bbox_max=np.asarray(field.bbox_max, dtype=float),
+                    )
+                    print(
+                        f"[plan] weld-goal escape: start_sdf={float(end_bundle['retreat_vals'][0]):.4f}m -> "
+                        f"end_sdf={float(end_bundle['retreat_vals'][-1]):.4f}m, "
+                        f"steps={len(end_bundle['retreat_path_pb'])}"
+                    )
+                    print(
+                        f"[plan] weld-goal ee path: {len(end_bundle['ee_path_pb'])} waypoints, "
+                        f"min_sdf={float(np.min(end_bundle['ee_d_path'])):.4f}m, "
+                        f"goal={np.asarray(end_bundle['retreat_goal_pb'], dtype=float).tolist()}"
+                    )
+                    print(
+                        f"[plan] weld-goal smooth: ee_min={float(np.min(end_bundle['ee_smoothed_d'])):.4f}m, "
+                        f"approach_min={float(np.min(end_bundle['approach_smoothed_d'])):.4f}m"
+                    )
+                _ = workpiece
             finally:
                 p.disconnect()
 
-        out_json = Path(args.output_json)
-        self.runner.ensure_parent(out_json)
+        out_json = self.runner.ensure_parent(Path(args.output_json))
         payload = {
             "method": method,
             "kind": kind,
             "n_waypoints": int(len(path)),
             "min_sdf_on_waypoints": float(np.min(d_path)),
             "start_used": start_pb_used.tolist(),
+            "start_is_robobase": True,
             "goal_used": goal_pb_used.tolist(),
+            "mid_robobase_position": None if mid_robobase_pb is None else mid_robobase_pb.tolist(),
+            "mid_ee_position": None if mid_ee_pb is None else mid_ee_pb.tolist(),
             "via_point": None if via is None else self.runner.sdf2pb(np.asarray(via, dtype=float).reshape(1, 3)).reshape(3).tolist(),
             "path": pts.tolist(),
+            "path_is_robobase": True,
             "init_config_used": None if q_best is None else {
                 "path": str(init_cfg.get("path")),
                 "q_best": q_best.tolist(),
             },
-            "weld_start_point": None if weld_start_pb is None else weld_start_pb.tolist(),
-            "retreat_path": None if retreat_path_pb is None else np.asarray(retreat_path_pb, dtype=float).tolist(),
-            "retreat_sdf_values": None if retreat_vals is None else np.asarray(retreat_vals, dtype=float).tolist(),
-            "retreat_goal": None if retreat_goal_pb is None else retreat_goal_pb.tolist(),
-            "ee_path": None if ee_path_pb is None else np.asarray(ee_path_pb, dtype=float).tolist(),
-            "ee_min_sdf_on_waypoints": None if ee_d_path is None else float(np.min(ee_d_path)),
-            "ee_bezier_control_points": None if ee_control_points_pb is None else np.asarray(ee_control_points_pb, dtype=float).tolist(),
-            "ee_bezier_path": None if ee_smoothed_pb is None else np.asarray(ee_smoothed_pb, dtype=float).tolist(),
-            "ee_bezier_min_sdf": None if ee_smoothed_d is None else float(np.min(ee_smoothed_d)),
-            "approach_bezier_control_points": None if approach_control_points_pb is None else np.asarray(approach_control_points_pb, dtype=float).tolist(),
-            "approach_bezier_path": None if approach_smoothed_pb is None else np.asarray(approach_smoothed_pb, dtype=float).tolist(),
-            "approach_bezier_min_sdf": None if approach_smoothed_d is None else float(np.min(approach_smoothed_d)),
+            "weld_start_point": None if start_bundle["weld_point_pb"] is None else np.asarray(start_bundle["weld_point_pb"], dtype=float).tolist(),
+            "retreat_path": None if start_bundle["retreat_path_pb"] is None else np.asarray(start_bundle["retreat_path_pb"], dtype=float).tolist(),
+            "retreat_sdf_values": None if start_bundle["retreat_vals"] is None else np.asarray(start_bundle["retreat_vals"], dtype=float).tolist(),
+            "retreat_goal": None if start_bundle["retreat_goal_pb"] is None else np.asarray(start_bundle["retreat_goal_pb"], dtype=float).tolist(),
+            "ee_path": None if start_bundle["ee_path_pb"] is None else np.asarray(start_bundle["ee_path_pb"], dtype=float).tolist(),
+            "ee_min_sdf_on_waypoints": None if start_bundle["ee_d_path"] is None else float(np.min(start_bundle["ee_d_path"])),
+            "ee_bezier_control_points": None if start_bundle["ee_control_points_pb"] is None else np.asarray(start_bundle["ee_control_points_pb"], dtype=float).tolist(),
+            "ee_bezier_path": None if start_bundle["ee_smoothed_pb"] is None else np.asarray(start_bundle["ee_smoothed_pb"], dtype=float).tolist(),
+            "ee_bezier_min_sdf": None if start_bundle["ee_smoothed_d"] is None else float(np.min(start_bundle["ee_smoothed_d"])),
+            "approach_bezier_control_points": None if start_bundle["approach_control_points_pb"] is None else np.asarray(start_bundle["approach_control_points_pb"], dtype=float).tolist(),
+            "approach_bezier_path": None if start_bundle["approach_smoothed_pb"] is None else np.asarray(start_bundle["approach_smoothed_pb"], dtype=float).tolist(),
+            "approach_bezier_min_sdf": None if start_bundle["approach_smoothed_d"] is None else float(np.min(start_bundle["approach_smoothed_d"])),
+            "approach_line_path": None if start_bundle["approach_line_pb"] is None else np.asarray(start_bundle["approach_line_pb"], dtype=float).tolist(),
+            "approach_line_min_sdf": None if start_bundle["approach_line_d"] is None else float(np.min(start_bundle["approach_line_d"])),
+            "approach_line_feasible": None if start_bundle["approach_line_feasible"] is None else bool(start_bundle["approach_line_feasible"]),
+            "weld_goal_point": None if end_bundle["weld_point_pb"] is None else np.asarray(end_bundle["weld_point_pb"], dtype=float).tolist(),
+            "retreat_end_path": None if end_bundle["retreat_path_pb"] is None else np.asarray(end_bundle["retreat_path_pb"], dtype=float).tolist(),
+            "retreat_end_sdf_values": None if end_bundle["retreat_vals"] is None else np.asarray(end_bundle["retreat_vals"], dtype=float).tolist(),
+            "retreat_end_goal": None if end_bundle["retreat_goal_pb"] is None else np.asarray(end_bundle["retreat_goal_pb"], dtype=float).tolist(),
+            "ee_path_return": None if end_bundle["ee_path_pb"] is None else np.asarray(end_bundle["ee_path_pb"], dtype=float).tolist(),
+            "ee_return_min_sdf_on_waypoints": None if end_bundle["ee_d_path"] is None else float(np.min(end_bundle["ee_d_path"])),
+            "ee_bezier_control_points_return": None if end_bundle["ee_control_points_pb"] is None else np.asarray(end_bundle["ee_control_points_pb"], dtype=float).tolist(),
+            "ee_bezier_path_return": None if end_bundle["ee_smoothed_pb"] is None else np.asarray(end_bundle["ee_smoothed_pb"], dtype=float).tolist(),
+            "ee_bezier_min_sdf_return": None if end_bundle["ee_smoothed_d"] is None else float(np.min(end_bundle["ee_smoothed_d"])),
+            "approach_end_bezier_control_points": None if end_bundle["approach_control_points_pb"] is None else np.asarray(end_bundle["approach_control_points_pb"], dtype=float).tolist(),
+            "approach_end_bezier_path": None if end_bundle["approach_smoothed_pb"] is None else np.asarray(end_bundle["approach_smoothed_pb"], dtype=float).tolist(),
+            "approach_end_bezier_min_sdf": None if end_bundle["approach_smoothed_d"] is None else float(np.min(end_bundle["approach_smoothed_d"])),
+            "approach_end_line_path": None if end_bundle["approach_line_pb"] is None else np.asarray(end_bundle["approach_line_pb"], dtype=float).tolist(),
+            "approach_end_line_min_sdf": None if end_bundle["approach_line_d"] is None else float(np.min(end_bundle["approach_line_d"])),
+            "approach_end_line_feasible": None if end_bundle["approach_line_feasible"] is None else bool(end_bundle["approach_line_feasible"]),
             "robot_q_at_goal": None if q_plan_final is None else np.asarray(q_plan_final, dtype=float).tolist(),
         }
-        out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        with open(out_json, "w", encoding="utf-8") as _f:
+            _f.write(json.dumps(payload, ensure_ascii=False, indent=2))
 
         fig = plt.figure(figsize=(7, 5.5))
         ax = fig.add_subplot(111, projection="3d")
-        ax.plot(pts[:, 0], pts[:, 1], pts[:, 2], "-o", ms=2.8, lw=1.4, c="dodgerblue")
-        ax.scatter([start_pb_used[0]], [start_pb_used[1]], [start_pb_used[2]], c="green", s=50, label="base start")
-        ax.scatter([goal_pb_used[0]], [goal_pb_used[1]], [goal_pb_used[2]], c="red", s=50, label="base goal")
+        ax.plot(pts[:, 0], pts[:, 1], pts[:, 2], "-o", ms=2.8, lw=1.4, c="dodgerblue", label="robobase RRT path")
+        ax.scatter([start_pb_used[0]], [start_pb_used[1]], [start_pb_used[2]], c="green", s=50, label="robobase start")
+        ax.scatter([goal_pb_used[0]], [goal_pb_used[1]], [goal_pb_used[2]], c="red", s=50, label="robobase goal (mid)")
+        if mid_ee_pb is not None:
+            ax.scatter([mid_ee_pb[0]], [mid_ee_pb[1]], [mid_ee_pb[2]], c="cyan", s=50, marker="^", label="mid EE")
         if weld_start_pb is not None:
             ax.scatter([weld_start_pb[0]], [weld_start_pb[1]], [weld_start_pb[2]], c="crimson", s=42, label="weld start")
-        if retreat_path_pb is not None:
-            retreat_arr = np.asarray(retreat_path_pb, dtype=float)
+        if weld_goal_pb is not None:
+            ax.scatter([weld_goal_pb[0]], [weld_goal_pb[1]], [weld_goal_pb[2]], c="purple", s=42, label="weld goal")
+        if start_bundle["retreat_path_pb"] is not None:
+            retreat_arr = np.asarray(start_bundle["retreat_path_pb"], dtype=float)
             ax.plot(retreat_arr[:, 0], retreat_arr[:, 1], retreat_arr[:, 2], "-o", ms=2.2, lw=1.2, c="orchid", label="gradient retreat")
-        if ee_path_pb is not None:
-            ee_arr = np.asarray(ee_path_pb, dtype=float)
+        if start_bundle["ee_path_pb"] is not None:
+            ee_arr = np.asarray(start_bundle["ee_path_pb"], dtype=float)
             ax.plot(ee_arr[:, 0], ee_arr[:, 1], ee_arr[:, 2], "-o", ms=2.0, lw=1.2, c="goldenrod", label="EE RRT")
-        if ee_smoothed_pb is not None:
-            ee_smooth_arr = np.asarray(ee_smoothed_pb, dtype=float)
+        if start_bundle["ee_smoothed_pb"] is not None:
+            ee_smooth_arr = np.asarray(start_bundle["ee_smoothed_pb"], dtype=float)
             ax.plot(
                 ee_smooth_arr[:, 0], ee_smooth_arr[:, 1], ee_smooth_arr[:, 2],
                 "-", lw=2.2, c="teal", label="EE bezier",
             )
-        if approach_smoothed_pb is not None:
-            app_smooth_arr = np.asarray(approach_smoothed_pb, dtype=float)
+        if start_bundle["approach_line_pb"] is not None:
+            app_line_arr = np.asarray(start_bundle["approach_line_pb"], dtype=float)
+            same_as_actual = (
+                start_bundle["approach_smoothed_pb"] is not None
+                and np.asarray(start_bundle["approach_smoothed_pb"], dtype=float).shape == app_line_arr.shape
+                and np.allclose(np.asarray(start_bundle["approach_smoothed_pb"], dtype=float), app_line_arr)
+            )
+            if not same_as_actual:
+                ax.plot(
+                    app_line_arr[:, 0], app_line_arr[:, 1], app_line_arr[:, 2],
+                    "--", lw=1.8, c="orange", label="approach line",
+                )
+        if start_bundle["approach_smoothed_pb"] is not None:
+            app_smooth_arr = np.asarray(start_bundle["approach_smoothed_pb"], dtype=float)
             ax.plot(
                 app_smooth_arr[:, 0], app_smooth_arr[:, 1], app_smooth_arr[:, 2],
-                "-", lw=2.0, c="darkorange", label="approach bezier",
+                "-", lw=2.0, c="darkorange", label="approach line",
             )
-        ax.set_title(f"SDF-constrained {method.upper()} path")
+        if weld_start_pb is not None and weld_goal_pb is not None:
+            weld_seg = np.vstack([weld_start_pb.reshape(1, 3), weld_goal_pb.reshape(1, 3)])
+            ax.plot(
+                weld_seg[:, 0], weld_seg[:, 1], weld_seg[:, 2],
+                "-s", ms=5, lw=2.8, c="red", label="weld path",
+            )
+        if end_bundle["retreat_path_pb"] is not None:
+            retreat_end_arr = np.asarray(end_bundle["retreat_path_pb"], dtype=float)
+            ax.plot(
+                retreat_end_arr[:, 0], retreat_end_arr[:, 1], retreat_end_arr[:, 2],
+                "-o", ms=2.0, lw=1.1, c="mediumpurple", label="goal retreat",
+            )
+        if end_bundle["ee_path_pb"] is not None:
+            ee_end_arr = np.asarray(end_bundle["ee_path_pb"], dtype=float)
+            ax.plot(
+                ee_end_arr[:, 0], ee_end_arr[:, 1], ee_end_arr[:, 2],
+                "-o", ms=2.0, lw=1.2, c="plum", label="end EE RRT",
+            )
+        if end_bundle["ee_smoothed_pb"] is not None:
+            ee_return_arr = np.asarray(end_bundle["ee_smoothed_pb"], dtype=float)
+            ax.plot(
+                ee_return_arr[:, 0], ee_return_arr[:, 1], ee_return_arr[:, 2],
+                "-", lw=1.8, c="slateblue", label="return bezier",
+            )
+        if end_bundle["approach_line_pb"] is not None:
+            end_app_line_arr = np.asarray(end_bundle["approach_line_pb"], dtype=float)
+            end_same = (
+                end_bundle["approach_smoothed_pb"] is not None
+                and np.asarray(end_bundle["approach_smoothed_pb"], dtype=float).shape == end_app_line_arr.shape
+                and np.allclose(np.asarray(end_bundle["approach_smoothed_pb"], dtype=float), end_app_line_arr)
+            )
+            if not end_same:
+                ax.plot(
+                    end_app_line_arr[:, 0], end_app_line_arr[:, 1], end_app_line_arr[:, 2],
+                    "--", lw=1.6, c="salmon", label="end approach line",
+                )
+        if end_bundle["approach_smoothed_pb"] is not None:
+            end_app_smooth_arr = np.asarray(end_bundle["approach_smoothed_pb"], dtype=float)
+            ax.plot(
+                end_app_smooth_arr[:, 0], end_app_smooth_arr[:, 1], end_app_smooth_arr[:, 2],
+                "-", lw=1.8, c="tomato", label="end approach smooth",
+            )
+        ax.set_title(f"SDF-constrained {method.upper()} path (full cycle)")
         ax.legend()
-        out_png = Path(args.output_png)
-        self.runner.ensure_parent(out_png)
-        fig.savefig(out_png, dpi=140)
+        out_png = self.runner.ensure_parent(Path(args.output_png))
+        with open(out_png, "wb") as _fp:
+            fig.savefig(_fp, dpi=140, format="png")
         plt.close(fig)
         print(f"[planner] 完成，结果写入: {out_json}")
         self.runner.show_plan_path(
@@ -2562,17 +2988,29 @@ class PlannerExperiment:
             d_path,
             path,
             robot_q=q_plan_final,
-            ee_pts_pb=ee_path_pb,
-            ee_d_path=ee_d_path,
-            ee_smoothed_pts_pb=ee_smoothed_pb,
-            ee_smoothed_d_path=ee_smoothed_d,
-            ee_control_points_pb=ee_control_points_pb,
+            ee_pts_pb=start_bundle["ee_path_pb"],
+            ee_d_path=start_bundle["ee_d_path"],
+            ee_smoothed_pts_pb=start_bundle["ee_smoothed_pb"],
+            ee_smoothed_d_path=start_bundle["ee_smoothed_d"],
+            ee_control_points_pb=start_bundle["ee_control_points_pb"],
             weld_start_pb=weld_start_pb,
-            retreat_pts_pb=retreat_path_pb,
-            retreat_goal_pb=retreat_goal_pb,
-            approach_smoothed_pts_pb=approach_smoothed_pb,
-            approach_smoothed_d_path=approach_smoothed_d,
-            approach_control_points_pb=approach_control_points_pb,
+            weld_goal_pb=weld_goal_pb,
+            retreat_pts_pb=start_bundle["retreat_path_pb"],
+            retreat_goal_pb=start_bundle["retreat_goal_pb"],
+            approach_smoothed_pts_pb=start_bundle["approach_smoothed_pb"],
+            approach_smoothed_d_path=start_bundle["approach_smoothed_d"],
+            approach_control_points_pb=start_bundle["approach_control_points_pb"],
+            approach_line_pts_pb=start_bundle["approach_line_pb"],
+            approach_line_d_path=start_bundle["approach_line_d"],
+            approach_line_feasible=start_bundle["approach_line_feasible"],
+            end_retreat_pts_pb=end_bundle["retreat_path_pb"],
+            end_retreat_goal_pb=end_bundle["retreat_goal_pb"],
+            end_ee_pts_pb=end_bundle["ee_path_pb"],
+            end_ee_smoothed_pts_pb=end_bundle["ee_smoothed_pb"],
+            end_approach_smoothed_pts_pb=end_bundle["approach_smoothed_pb"],
+            end_approach_control_points_pb=end_bundle["approach_control_points_pb"],
+            end_approach_line_pts_pb=end_bundle["approach_line_pb"],
+            end_approach_line_feasible=end_bundle["approach_line_feasible"],
         )
 
 

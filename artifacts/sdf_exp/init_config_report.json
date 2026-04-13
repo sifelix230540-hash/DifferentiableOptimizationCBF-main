@@ -3,54 +3,86 @@
     {
       "joint_index": 4,
       "name": "link04",
-      "angle_rad": 0.04283533270284704,
-      "angle_deg": 2.454283777911849
+      "angle_rad": 0.7282793103148564,
+      "angle_deg": 41.727330787739675
     },
     {
       "joint_index": 5,
       "name": "link05",
-      "angle_rad": 0.41795773536508274,
-      "angle_deg": 23.94721425126499
+      "angle_rad": 0.42787575757784624,
+      "angle_deg": 24.51547506517334
     },
     {
       "joint_index": 6,
       "name": "link06",
-      "angle_rad": 0.4561564097306292,
-      "angle_deg": 26.13583707540537
+      "angle_rad": -1.426976379945453,
+      "angle_deg": -81.75972403573105
     },
     {
       "joint_index": 7,
       "name": "link07",
-      "angle_rad": 0.27868660786694294,
-      "angle_deg": 15.967566437593195
+      "angle_rad": -1.0230665269492716,
+      "angle_deg": -58.61739415530036
     },
     {
       "joint_index": 8,
       "name": "link08",
-      "angle_rad": -0.07743977388720051,
-      "angle_deg": -4.43697221018399
+      "angle_rad": 1.3365830799006757,
+      "angle_deg": 76.58056944690561
     },
     {
       "joint_index": 9,
       "name": "link09",
-      "angle_rad": 0.18139231279221357,
-      "angle_deg": 10.39301395911073
+      "angle_rad": 0.4979345893790238,
+      "angle_deg": 28.52955044499773
     }
   ],
-  "occupancy_count": 350,
-  "aabb_volume_m3": 0.14876543139609616,
-  "aabb_max_dim_m": 0.8017480749695034,
+  "occupancy_count": 326,
+  "aabb_volume_m3": 0.23074571156616455,
+  "aabb_max_dim_m": 0.6630470785989755,
   "aabb_min": [
-    -0.06224220812805159,
-    -0.08472242785138207,
-    0.040000078298223496
+    -0.06221537196996785,
+    -0.45912205109408344,
+    -0.16708379270695906
   ],
   "aabb_max": [
-    0.7395058668414518,
-    0.22252329968510942,
-    0.6439184587484998
+    0.6008317066290076,
+    0.20017050255991808,
+    0.36076690729270267
   ],
-  "bbox_radius_m": 1.005493176263628,
-  "feasible_samples": 400,
-  "total_samples": 400
+  "bbox_radius_m": 0.837821316802757,
+  "feasible_samples": 829,
+  "total_samples": 2000,
+  "selection_score": 0.7757999335055379,
+  "selection_score_components": {
+    "aabb_max_dim": 0.1872978287451127,
+    "inverse_condition": 0.18352422628264253,
+    "min_singular_value": 0.11952943896330202,
+    "self_collision_distance": 0.1498252592700216,
+    "environment_distance": 0.075,
+    "joint_limit_margin": 0.06062318024445901
+  },
+  "configuration_quality": {
+    "manipulability": 0.1088449046060517,
+    "min_singular_value": 0.4195786607975386,
+    "inverse_condition": 0.7413972916309366,
+    "singular_values": [
+      0.565929583954297,
+      0.4583870221176594,
+      0.4195786607975386
+    ],
+    "joint_limit_margin": 0.7728901865378386,
+    "joint_limit_margin_mean": 0.8556808726957832,
+    "joint_limit_per_joint": [
+      0.8840910188574522,
+      0.9319016173959375,
+      0.7728901865378386,
+      0.8371742858815139,
+      0.7872766934204425,
+      0.9207514340815152
+    ],
+    "self_collision_distance": 0.02612492235879875,
+    "environment_distance": Infinity,
+    "clearance_distance": 0.02612492235879875
+  }
 }

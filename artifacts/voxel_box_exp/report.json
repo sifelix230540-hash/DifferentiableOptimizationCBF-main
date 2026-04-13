@@ -1,0 +1,36 @@
+{
+  "input_npz": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\assets\\cad_exports\\model_CAD\\scene\\urdf\\中组立0725(1).stp.SLDASM_udf_occ.npz",
+  "grid_shape": [
+    301,
+    325,
+    91
+  ],
+  "spacing": 0.019999999552965164,
+  "bbox_min": [
+    -0.0,
+    -0.0044,
+    -0.012
+  ],
+  "bbox_max": [
+    6.0,
+    6.4956,
+    1.788
+  ],
+  "n_occupied_voxels": 397480,
+  "n_claimed_voxels": 421585,
+  "n_extra_voxels": 24105,
+  "n_uncovered_voxels": 0,
+  "coverage_ratio": 1.0,
+  "extra_over_occ_ratio": 0.060645,
+  "n_boxes": 155,
+  "n_boxes_pre_merge": 519,
+  "merge_count": 364,
+  "min_fill_ratio_cfg": 0.72,
+  "max_expansion_ratio_cfg": 0.28,
+  "box_fill_ratio_mean": 0.759316,
+  "box_fill_ratio_min": 0.678571,
+  "box_fill_ratio_max": 1.0,
+  "box_expansion_ratio_mean": 0.240684,
+  "box_voxel_volume_mean": 2787.89,
+  "box_voxel_volume_max": 97825
+}

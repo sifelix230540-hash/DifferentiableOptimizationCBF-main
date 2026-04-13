@@ -1,0 +1,5742 @@
+{
+  "input_npz": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\assets\\cad_exports\\model_CAD\\scene\\urdf\\中组立0725(1).stp.SLDASM_udf_occ.npz",
+  "spacing": 0.019999999552965164,
+  "n_boxes": 155,
+  "boxes": [
+    {
+      "ijk_min": [
+        0,
+        0,
+        0
+      ],
+      "ijk_max": [
+        301,
+        325,
+        1
+      ],
+      "world_min": [
+        -0.0,
+        -0.0044,
+        -0.012
+      ],
+      "world_max": [
+        6.02,
+        6.4956,
+        0.008
+      ],
+      "world_center": [
+        3.01,
+        3.2456,
+        -0.002
+      ],
+      "half_extents": [
+        3.01,
+        3.25,
+        0.01
+      ],
+      "voxel_volume": 97825,
+      "occupied_count": 97825,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        38,
+        7
+      ],
+      "ijk_max": [
+        301,
+        43,
+        9
+      ],
+      "world_min": [
+        -0.0,
+        0.7556,
+        0.128
+      ],
+      "world_max": [
+        6.02,
+        0.8556,
+        0.168
+      ],
+      "world_center": [
+        3.01,
+        0.8056,
+        0.148
+      ],
+      "half_extents": [
+        3.01,
+        0.05,
+        0.02
+      ],
+      "voxel_volume": 3010,
+      "occupied_count": 2420,
+      "empty_count": 590,
+      "fill_ratio": 0.803987,
+      "expansion_ratio": 0.196013
+    },
+    {
+      "ijk_min": [
+        0,
+        39,
+        1
+      ],
+      "ijk_max": [
+        301,
+        41,
+        7
+      ],
+      "world_min": [
+        -0.0,
+        0.7756,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        0.8156,
+        0.128
+      ],
+      "world_center": [
+        3.01,
+        0.7956,
+        0.068
+      ],
+      "half_extents": [
+        3.01,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 3612,
+      "occupied_count": 3612,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        78,
+        7
+      ],
+      "ijk_max": [
+        301,
+        83,
+        9
+      ],
+      "world_min": [
+        -0.0,
+        1.5556,
+        0.128
+      ],
+      "world_max": [
+        6.02,
+        1.6556,
+        0.168
+      ],
+      "world_center": [
+        3.01,
+        1.6056,
+        0.148
+      ],
+      "half_extents": [
+        3.01,
+        0.05,
+        0.02
+      ],
+      "voxel_volume": 3010,
+      "occupied_count": 2420,
+      "empty_count": 590,
+      "fill_ratio": 0.803987,
+      "expansion_ratio": 0.196013
+    },
+    {
+      "ijk_min": [
+        0,
+        79,
+        1
+      ],
+      "ijk_max": [
+        301,
+        81,
+        7
+      ],
+      "world_min": [
+        -0.0,
+        1.5756,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        1.6156,
+        0.128
+      ],
+      "world_center": [
+        3.01,
+        1.5956,
+        0.068
+      ],
+      "half_extents": [
+        3.01,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 3612,
+      "occupied_count": 3612,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        118,
+        7
+      ],
+      "ijk_max": [
+        301,
+        123,
+        9
+      ],
+      "world_min": [
+        -0.0,
+        2.3556,
+        0.128
+      ],
+      "world_max": [
+        6.02,
+        2.4556,
+        0.168
+      ],
+      "world_center": [
+        3.01,
+        2.4056,
+        0.148
+      ],
+      "half_extents": [
+        3.01,
+        0.05,
+        0.02
+      ],
+      "voxel_volume": 3010,
+      "occupied_count": 2420,
+      "empty_count": 590,
+      "fill_ratio": 0.803987,
+      "expansion_ratio": 0.196013
+    },
+    {
+      "ijk_min": [
+        0,
+        119,
+        1
+      ],
+      "ijk_max": [
+        301,
+        121,
+        7
+      ],
+      "world_min": [
+        -0.0,
+        2.3756,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        2.4156,
+        0.128
+      ],
+      "world_center": [
+        3.01,
+        2.3956,
+        0.068
+      ],
+      "half_extents": [
+        3.01,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 3612,
+      "occupied_count": 3612,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        152,
+        28
+      ],
+      "ijk_max": [
+        301,
+        153,
+        34
+      ],
+      "world_min": [
+        -0.0,
+        3.0356,
+        0.548
+      ],
+      "world_max": [
+        6.02,
+        3.0556,
+        0.668
+      ],
+      "world_center": [
+        3.01,
+        3.0456,
+        0.608
+      ],
+      "half_extents": [
+        3.01,
+        0.01,
+        0.06
+      ],
+      "voxel_volume": 1806,
+      "occupied_count": 1510,
+      "empty_count": 296,
+      "fill_ratio": 0.836102,
+      "expansion_ratio": 0.163898
+    },
+    {
+      "ijk_min": [
+        0,
+        152,
+        63
+      ],
+      "ijk_max": [
+        301,
+        153,
+        69
+      ],
+      "world_min": [
+        -0.0,
+        3.0356,
+        1.248
+      ],
+      "world_max": [
+        6.02,
+        3.0556,
+        1.368
+      ],
+      "world_center": [
+        3.01,
+        3.0456,
+        1.308
+      ],
+      "half_extents": [
+        3.01,
+        0.01,
+        0.06
+      ],
+      "voxel_volume": 1806,
+      "occupied_count": 1510,
+      "empty_count": 296,
+      "fill_ratio": 0.836102,
+      "expansion_ratio": 0.163898
+    },
+    {
+      "ijk_min": [
+        0,
+        153,
+        30
+      ],
+      "ijk_max": [
+        301,
+        164,
+        31
+      ],
+      "world_min": [
+        -0.0,
+        3.0556,
+        0.588
+      ],
+      "world_max": [
+        6.02,
+        3.2756,
+        0.608
+      ],
+      "world_center": [
+        3.01,
+        3.1656,
+        0.598
+      ],
+      "half_extents": [
+        3.01,
+        0.11,
+        0.01
+      ],
+      "voxel_volume": 3311,
+      "occupied_count": 2423,
+      "empty_count": 888,
+      "fill_ratio": 0.731803,
+      "expansion_ratio": 0.268197
+    },
+    {
+      "ijk_min": [
+        0,
+        153,
+        65
+      ],
+      "ijk_max": [
+        301,
+        164,
+        66
+      ],
+      "world_min": [
+        -0.0,
+        3.0556,
+        1.288
+      ],
+      "world_max": [
+        6.02,
+        3.2756,
+        1.308
+      ],
+      "world_center": [
+        3.01,
+        3.1656,
+        1.298
+      ],
+      "half_extents": [
+        3.01,
+        0.11,
+        0.01
+      ],
+      "voxel_volume": 3311,
+      "occupied_count": 2423,
+      "empty_count": 888,
+      "fill_ratio": 0.731803,
+      "expansion_ratio": 0.268197
+    },
+    {
+      "ijk_min": [
+        0,
+        199,
+        7
+      ],
+      "ijk_max": [
+        301,
+        204,
+        9
+      ],
+      "world_min": [
+        -0.0,
+        3.9756,
+        0.128
+      ],
+      "world_max": [
+        6.02,
+        4.0756,
+        0.168
+      ],
+      "world_center": [
+        3.01,
+        4.0256,
+        0.148
+      ],
+      "half_extents": [
+        3.01,
+        0.05,
+        0.02
+      ],
+      "voxel_volume": 3010,
+      "occupied_count": 2420,
+      "empty_count": 590,
+      "fill_ratio": 0.803987,
+      "expansion_ratio": 0.196013
+    },
+    {
+      "ijk_min": [
+        0,
+        200,
+        1
+      ],
+      "ijk_max": [
+        301,
+        202,
+        7
+      ],
+      "world_min": [
+        -0.0,
+        3.9956,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        4.0356,
+        0.128
+      ],
+      "world_center": [
+        3.01,
+        4.0156,
+        0.068
+      ],
+      "half_extents": [
+        3.01,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 3612,
+      "occupied_count": 3612,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        239,
+        7
+      ],
+      "ijk_max": [
+        301,
+        244,
+        9
+      ],
+      "world_min": [
+        -0.0,
+        4.7756,
+        0.128
+      ],
+      "world_max": [
+        6.02,
+        4.8756,
+        0.168
+      ],
+      "world_center": [
+        3.01,
+        4.8256,
+        0.148
+      ],
+      "half_extents": [
+        3.01,
+        0.05,
+        0.02
+      ],
+      "voxel_volume": 3010,
+      "occupied_count": 2420,
+      "empty_count": 590,
+      "fill_ratio": 0.803987,
+      "expansion_ratio": 0.196013
+    },
+    {
+      "ijk_min": [
+        0,
+        240,
+        1
+      ],
+      "ijk_max": [
+        301,
+        242,
+        7
+      ],
+      "world_min": [
+        -0.0,
+        4.7956,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        4.8356,
+        0.128
+      ],
+      "world_center": [
+        3.01,
+        4.8156,
+        0.068
+      ],
+      "half_extents": [
+        3.01,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 3612,
+      "occupied_count": 3612,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        279,
+        7
+      ],
+      "ijk_max": [
+        301,
+        284,
+        9
+      ],
+      "world_min": [
+        -0.0,
+        5.5756,
+        0.128
+      ],
+      "world_max": [
+        6.02,
+        5.6756,
+        0.168
+      ],
+      "world_center": [
+        3.01,
+        5.6256,
+        0.148
+      ],
+      "half_extents": [
+        3.01,
+        0.05,
+        0.02
+      ],
+      "voxel_volume": 3010,
+      "occupied_count": 2420,
+      "empty_count": 590,
+      "fill_ratio": 0.803987,
+      "expansion_ratio": 0.196013
+    },
+    {
+      "ijk_min": [
+        0,
+        280,
+        1
+      ],
+      "ijk_max": [
+        301,
+        282,
+        7
+      ],
+      "world_min": [
+        -0.0,
+        5.5956,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        5.6356,
+        0.128
+      ],
+      "world_center": [
+        3.01,
+        5.6156,
+        0.068
+      ],
+      "half_extents": [
+        3.01,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 3612,
+      "occupied_count": 3612,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        313,
+        28
+      ],
+      "ijk_max": [
+        301,
+        314,
+        34
+      ],
+      "world_min": [
+        -0.0,
+        6.2556,
+        0.548
+      ],
+      "world_max": [
+        6.02,
+        6.2756,
+        0.668
+      ],
+      "world_center": [
+        3.01,
+        6.2656,
+        0.608
+      ],
+      "half_extents": [
+        3.01,
+        0.01,
+        0.06
+      ],
+      "voxel_volume": 1806,
+      "occupied_count": 1510,
+      "empty_count": 296,
+      "fill_ratio": 0.836102,
+      "expansion_ratio": 0.163898
+    },
+    {
+      "ijk_min": [
+        0,
+        313,
+        63
+      ],
+      "ijk_max": [
+        301,
+        314,
+        69
+      ],
+      "world_min": [
+        -0.0,
+        6.2556,
+        1.248
+      ],
+      "world_max": [
+        6.02,
+        6.2756,
+        1.368
+      ],
+      "world_center": [
+        3.01,
+        6.2656,
+        1.308
+      ],
+      "half_extents": [
+        3.01,
+        0.01,
+        0.06
+      ],
+      "voxel_volume": 1806,
+      "occupied_count": 1510,
+      "empty_count": 296,
+      "fill_ratio": 0.836102,
+      "expansion_ratio": 0.163898
+    },
+    {
+      "ijk_min": [
+        0,
+        314,
+        30
+      ],
+      "ijk_max": [
+        301,
+        325,
+        31
+      ],
+      "world_min": [
+        -0.0,
+        6.2756,
+        0.588
+      ],
+      "world_max": [
+        6.02,
+        6.4956,
+        0.608
+      ],
+      "world_center": [
+        3.01,
+        6.3856,
+        0.598
+      ],
+      "half_extents": [
+        3.01,
+        0.11,
+        0.01
+      ],
+      "voxel_volume": 3311,
+      "occupied_count": 2408,
+      "empty_count": 903,
+      "fill_ratio": 0.727273,
+      "expansion_ratio": 0.272727
+    },
+    {
+      "ijk_min": [
+        0,
+        314,
+        65
+      ],
+      "ijk_max": [
+        301,
+        325,
+        66
+      ],
+      "world_min": [
+        -0.0,
+        6.2756,
+        1.288
+      ],
+      "world_max": [
+        6.02,
+        6.4956,
+        1.308
+      ],
+      "world_center": [
+        3.01,
+        6.3856,
+        1.298
+      ],
+      "half_extents": [
+        3.01,
+        0.11,
+        0.01
+      ],
+      "voxel_volume": 3311,
+      "occupied_count": 2408,
+      "empty_count": 903,
+      "fill_ratio": 0.727273,
+      "expansion_ratio": 0.272727
+    },
+    {
+      "ijk_min": [
+        9,
+        39,
+        9
+      ],
+      "ijk_max": [
+        30,
+        41,
+        20
+      ],
+      "world_min": [
+        0.18,
+        0.7756,
+        0.168
+      ],
+      "world_max": [
+        0.6,
+        0.8156,
+        0.388
+      ],
+      "world_center": [
+        0.39,
+        0.7956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        9,
+        79,
+        9
+      ],
+      "ijk_max": [
+        30,
+        81,
+        20
+      ],
+      "world_min": [
+        0.18,
+        1.5756,
+        0.168
+      ],
+      "world_max": [
+        0.6,
+        1.6156,
+        0.388
+      ],
+      "world_center": [
+        0.39,
+        1.5956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        9,
+        119,
+        9
+      ],
+      "ijk_max": [
+        30,
+        121,
+        20
+      ],
+      "world_min": [
+        0.18,
+        2.3756,
+        0.168
+      ],
+      "world_max": [
+        0.6,
+        2.4156,
+        0.388
+      ],
+      "world_center": [
+        0.39,
+        2.3956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        9,
+        200,
+        9
+      ],
+      "ijk_max": [
+        30,
+        202,
+        20
+      ],
+      "world_min": [
+        0.18,
+        3.9956,
+        0.168
+      ],
+      "world_max": [
+        0.6,
+        4.0356,
+        0.388
+      ],
+      "world_center": [
+        0.39,
+        4.0156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        9,
+        240,
+        9
+      ],
+      "ijk_max": [
+        30,
+        242,
+        20
+      ],
+      "world_min": [
+        0.18,
+        4.7956,
+        0.168
+      ],
+      "world_max": [
+        0.6,
+        4.8356,
+        0.388
+      ],
+      "world_center": [
+        0.39,
+        4.8156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        9,
+        280,
+        9
+      ],
+      "ijk_max": [
+        30,
+        282,
+        20
+      ],
+      "world_min": [
+        0.18,
+        5.5956,
+        0.168
+      ],
+      "world_max": [
+        0.6,
+        5.6356,
+        0.388
+      ],
+      "world_center": [
+        0.39,
+        5.6156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        20,
+        39,
+        20
+      ],
+      "ijk_max": [
+        30,
+        41,
+        71
+      ],
+      "world_min": [
+        0.4,
+        0.7756,
+        0.388
+      ],
+      "world_max": [
+        0.6,
+        0.8156,
+        1.408
+      ],
+      "world_center": [
+        0.5,
+        0.7956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        20,
+        79,
+        20
+      ],
+      "ijk_max": [
+        30,
+        81,
+        71
+      ],
+      "world_min": [
+        0.4,
+        1.5756,
+        0.388
+      ],
+      "world_max": [
+        0.6,
+        1.6156,
+        1.408
+      ],
+      "world_center": [
+        0.5,
+        1.5956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        20,
+        119,
+        20
+      ],
+      "ijk_max": [
+        30,
+        121,
+        71
+      ],
+      "world_min": [
+        0.4,
+        2.3756,
+        0.388
+      ],
+      "world_max": [
+        0.6,
+        2.4156,
+        1.408
+      ],
+      "world_center": [
+        0.5,
+        2.3956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        20,
+        200,
+        20
+      ],
+      "ijk_max": [
+        30,
+        202,
+        71
+      ],
+      "world_min": [
+        0.4,
+        3.9956,
+        0.388
+      ],
+      "world_max": [
+        0.6,
+        4.0356,
+        1.408
+      ],
+      "world_center": [
+        0.5,
+        4.0156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        20,
+        240,
+        20
+      ],
+      "ijk_max": [
+        30,
+        242,
+        71
+      ],
+      "world_min": [
+        0.4,
+        4.7956,
+        0.388
+      ],
+      "world_max": [
+        0.6,
+        4.8356,
+        1.408
+      ],
+      "world_center": [
+        0.5,
+        4.8156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        20,
+        280,
+        20
+      ],
+      "ijk_max": [
+        30,
+        282,
+        71
+      ],
+      "world_min": [
+        0.4,
+        5.5956,
+        0.388
+      ],
+      "world_max": [
+        0.6,
+        5.6356,
+        1.408
+      ],
+      "world_center": [
+        0.5,
+        5.6156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        23,
+        0,
+        45
+      ],
+      "ijk_max": [
+        32,
+        39,
+        46
+      ],
+      "world_min": [
+        0.46,
+        -0.0044,
+        0.888
+      ],
+      "world_max": [
+        0.64,
+        0.7756,
+        0.908
+      ],
+      "world_center": [
+        0.55,
+        0.3856,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.39,
+        0.01
+      ],
+      "voxel_volume": 351,
+      "occupied_count": 273,
+      "empty_count": 78,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        23,
+        41,
+        21
+      ],
+      "ijk_max": [
+        32,
+        79,
+        22
+      ],
+      "world_min": [
+        0.46,
+        0.8156,
+        0.408
+      ],
+      "world_max": [
+        0.64,
+        1.5756,
+        0.428
+      ],
+      "world_center": [
+        0.55,
+        1.1956,
+        0.418
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        23,
+        41,
+        69
+      ],
+      "ijk_max": [
+        32,
+        79,
+        70
+      ],
+      "world_min": [
+        0.46,
+        0.8156,
+        1.368
+      ],
+      "world_max": [
+        0.64,
+        1.5756,
+        1.388
+      ],
+      "world_center": [
+        0.55,
+        1.1956,
+        1.378
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        23,
+        81,
+        45
+      ],
+      "ijk_max": [
+        32,
+        119,
+        46
+      ],
+      "world_min": [
+        0.46,
+        1.6156,
+        0.888
+      ],
+      "world_max": [
+        0.64,
+        2.3756,
+        0.908
+      ],
+      "world_center": [
+        0.55,
+        1.9956,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        23,
+        202,
+        21
+      ],
+      "ijk_max": [
+        32,
+        240,
+        22
+      ],
+      "world_min": [
+        0.46,
+        4.0356,
+        0.408
+      ],
+      "world_max": [
+        0.64,
+        4.7956,
+        0.428
+      ],
+      "world_center": [
+        0.55,
+        4.4156,
+        0.418
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        23,
+        202,
+        69
+      ],
+      "ijk_max": [
+        32,
+        240,
+        70
+      ],
+      "world_min": [
+        0.46,
+        4.0356,
+        1.368
+      ],
+      "world_max": [
+        0.64,
+        4.7956,
+        1.388
+      ],
+      "world_center": [
+        0.55,
+        4.4156,
+        1.378
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        23,
+        242,
+        45
+      ],
+      "ijk_max": [
+        32,
+        280,
+        46
+      ],
+      "world_min": [
+        0.46,
+        4.8356,
+        0.888
+      ],
+      "world_max": [
+        0.64,
+        5.5956,
+        0.908
+      ],
+      "world_center": [
+        0.55,
+        5.2156,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        23,
+        282,
+        45
+      ],
+      "ijk_max": [
+        32,
+        320,
+        46
+      ],
+      "world_min": [
+        0.46,
+        5.6356,
+        0.888
+      ],
+      "world_max": [
+        0.64,
+        6.3956,
+        0.908
+      ],
+      "world_center": [
+        0.55,
+        6.0156,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        141,
+        39,
+        9
+      ],
+      "ijk_max": [
+        162,
+        41,
+        20
+      ],
+      "world_min": [
+        2.82,
+        0.7756,
+        0.168
+      ],
+      "world_max": [
+        3.24,
+        0.8156,
+        0.388
+      ],
+      "world_center": [
+        3.03,
+        0.7956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        141,
+        79,
+        9
+      ],
+      "ijk_max": [
+        162,
+        81,
+        20
+      ],
+      "world_min": [
+        2.82,
+        1.5756,
+        0.168
+      ],
+      "world_max": [
+        3.24,
+        1.6156,
+        0.388
+      ],
+      "world_center": [
+        3.03,
+        1.5956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        141,
+        119,
+        9
+      ],
+      "ijk_max": [
+        162,
+        121,
+        20
+      ],
+      "world_min": [
+        2.82,
+        2.3756,
+        0.168
+      ],
+      "world_max": [
+        3.24,
+        2.4156,
+        0.388
+      ],
+      "world_center": [
+        3.03,
+        2.3956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        141,
+        200,
+        9
+      ],
+      "ijk_max": [
+        162,
+        202,
+        20
+      ],
+      "world_min": [
+        2.82,
+        3.9956,
+        0.168
+      ],
+      "world_max": [
+        3.24,
+        4.0356,
+        0.388
+      ],
+      "world_center": [
+        3.03,
+        4.0156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        141,
+        240,
+        9
+      ],
+      "ijk_max": [
+        162,
+        242,
+        20
+      ],
+      "world_min": [
+        2.82,
+        4.7956,
+        0.168
+      ],
+      "world_max": [
+        3.24,
+        4.8356,
+        0.388
+      ],
+      "world_center": [
+        3.03,
+        4.8156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        141,
+        280,
+        9
+      ],
+      "ijk_max": [
+        162,
+        282,
+        20
+      ],
+      "world_min": [
+        2.82,
+        5.5956,
+        0.168
+      ],
+      "world_max": [
+        3.24,
+        5.6356,
+        0.388
+      ],
+      "world_center": [
+        3.03,
+        5.6156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        152,
+        39,
+        20
+      ],
+      "ijk_max": [
+        162,
+        41,
+        71
+      ],
+      "world_min": [
+        3.04,
+        0.7756,
+        0.388
+      ],
+      "world_max": [
+        3.24,
+        0.8156,
+        1.408
+      ],
+      "world_center": [
+        3.14,
+        0.7956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        152,
+        79,
+        20
+      ],
+      "ijk_max": [
+        162,
+        81,
+        71
+      ],
+      "world_min": [
+        3.04,
+        1.5756,
+        0.388
+      ],
+      "world_max": [
+        3.24,
+        1.6156,
+        1.408
+      ],
+      "world_center": [
+        3.14,
+        1.5956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        152,
+        119,
+        20
+      ],
+      "ijk_max": [
+        162,
+        121,
+        71
+      ],
+      "world_min": [
+        3.04,
+        2.3756,
+        0.388
+      ],
+      "world_max": [
+        3.24,
+        2.4156,
+        1.408
+      ],
+      "world_center": [
+        3.14,
+        2.3956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        152,
+        200,
+        20
+      ],
+      "ijk_max": [
+        162,
+        202,
+        71
+      ],
+      "world_min": [
+        3.04,
+        3.9956,
+        0.388
+      ],
+      "world_max": [
+        3.24,
+        4.0356,
+        1.408
+      ],
+      "world_center": [
+        3.14,
+        4.0156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        152,
+        240,
+        20
+      ],
+      "ijk_max": [
+        162,
+        242,
+        71
+      ],
+      "world_min": [
+        3.04,
+        4.7956,
+        0.388
+      ],
+      "world_max": [
+        3.24,
+        4.8356,
+        1.408
+      ],
+      "world_center": [
+        3.14,
+        4.8156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        152,
+        280,
+        20
+      ],
+      "ijk_max": [
+        162,
+        282,
+        71
+      ],
+      "world_min": [
+        3.04,
+        5.5956,
+        0.388
+      ],
+      "world_max": [
+        3.24,
+        5.6356,
+        1.408
+      ],
+      "world_center": [
+        3.14,
+        5.6156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        155,
+        0,
+        45
+      ],
+      "ijk_max": [
+        164,
+        39,
+        46
+      ],
+      "world_min": [
+        3.1,
+        -0.0044,
+        0.888
+      ],
+      "world_max": [
+        3.28,
+        0.7756,
+        0.908
+      ],
+      "world_center": [
+        3.19,
+        0.3856,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.39,
+        0.01
+      ],
+      "voxel_volume": 351,
+      "occupied_count": 273,
+      "empty_count": 78,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        155,
+        41,
+        21
+      ],
+      "ijk_max": [
+        164,
+        79,
+        22
+      ],
+      "world_min": [
+        3.1,
+        0.8156,
+        0.408
+      ],
+      "world_max": [
+        3.28,
+        1.5756,
+        0.428
+      ],
+      "world_center": [
+        3.19,
+        1.1956,
+        0.418
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        155,
+        41,
+        69
+      ],
+      "ijk_max": [
+        164,
+        79,
+        70
+      ],
+      "world_min": [
+        3.1,
+        0.8156,
+        1.368
+      ],
+      "world_max": [
+        3.28,
+        1.5756,
+        1.388
+      ],
+      "world_center": [
+        3.19,
+        1.1956,
+        1.378
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        155,
+        81,
+        45
+      ],
+      "ijk_max": [
+        164,
+        119,
+        46
+      ],
+      "world_min": [
+        3.1,
+        1.6156,
+        0.888
+      ],
+      "world_max": [
+        3.28,
+        2.3756,
+        0.908
+      ],
+      "world_center": [
+        3.19,
+        1.9956,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        155,
+        202,
+        21
+      ],
+      "ijk_max": [
+        164,
+        240,
+        22
+      ],
+      "world_min": [
+        3.1,
+        4.0356,
+        0.408
+      ],
+      "world_max": [
+        3.28,
+        4.7956,
+        0.428
+      ],
+      "world_center": [
+        3.19,
+        4.4156,
+        0.418
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        155,
+        202,
+        69
+      ],
+      "ijk_max": [
+        164,
+        240,
+        70
+      ],
+      "world_min": [
+        3.1,
+        4.0356,
+        1.368
+      ],
+      "world_max": [
+        3.28,
+        4.7956,
+        1.388
+      ],
+      "world_center": [
+        3.19,
+        4.4156,
+        1.378
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        155,
+        242,
+        45
+      ],
+      "ijk_max": [
+        164,
+        280,
+        46
+      ],
+      "world_min": [
+        3.1,
+        4.8356,
+        0.888
+      ],
+      "world_max": [
+        3.28,
+        5.5956,
+        0.908
+      ],
+      "world_center": [
+        3.19,
+        5.2156,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        155,
+        282,
+        45
+      ],
+      "ijk_max": [
+        164,
+        320,
+        46
+      ],
+      "world_min": [
+        3.1,
+        5.6356,
+        0.888
+      ],
+      "world_max": [
+        3.28,
+        6.3956,
+        0.908
+      ],
+      "world_center": [
+        3.19,
+        6.0156,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        273,
+        39,
+        9
+      ],
+      "ijk_max": [
+        294,
+        41,
+        20
+      ],
+      "world_min": [
+        5.46,
+        0.7756,
+        0.168
+      ],
+      "world_max": [
+        5.88,
+        0.8156,
+        0.388
+      ],
+      "world_center": [
+        5.67,
+        0.7956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        273,
+        79,
+        9
+      ],
+      "ijk_max": [
+        294,
+        81,
+        20
+      ],
+      "world_min": [
+        5.46,
+        1.5756,
+        0.168
+      ],
+      "world_max": [
+        5.88,
+        1.6156,
+        0.388
+      ],
+      "world_center": [
+        5.67,
+        1.5956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        273,
+        119,
+        9
+      ],
+      "ijk_max": [
+        294,
+        121,
+        20
+      ],
+      "world_min": [
+        5.46,
+        2.3756,
+        0.168
+      ],
+      "world_max": [
+        5.88,
+        2.4156,
+        0.388
+      ],
+      "world_center": [
+        5.67,
+        2.3956,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        273,
+        200,
+        9
+      ],
+      "ijk_max": [
+        294,
+        202,
+        20
+      ],
+      "world_min": [
+        5.46,
+        3.9956,
+        0.168
+      ],
+      "world_max": [
+        5.88,
+        4.0356,
+        0.388
+      ],
+      "world_center": [
+        5.67,
+        4.0156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        273,
+        240,
+        9
+      ],
+      "ijk_max": [
+        294,
+        242,
+        20
+      ],
+      "world_min": [
+        5.46,
+        4.7956,
+        0.168
+      ],
+      "world_max": [
+        5.88,
+        4.8356,
+        0.388
+      ],
+      "world_center": [
+        5.67,
+        4.8156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        273,
+        280,
+        9
+      ],
+      "ijk_max": [
+        294,
+        282,
+        20
+      ],
+      "world_min": [
+        5.46,
+        5.5956,
+        0.168
+      ],
+      "world_max": [
+        5.88,
+        5.6356,
+        0.388
+      ],
+      "world_center": [
+        5.67,
+        5.6156,
+        0.278
+      ],
+      "half_extents": [
+        0.21,
+        0.02,
+        0.11
+      ],
+      "voxel_volume": 462,
+      "occupied_count": 338,
+      "empty_count": 124,
+      "fill_ratio": 0.731602,
+      "expansion_ratio": 0.268398
+    },
+    {
+      "ijk_min": [
+        284,
+        39,
+        20
+      ],
+      "ijk_max": [
+        294,
+        41,
+        71
+      ],
+      "world_min": [
+        5.68,
+        0.7756,
+        0.388
+      ],
+      "world_max": [
+        5.88,
+        0.8156,
+        1.408
+      ],
+      "world_center": [
+        5.78,
+        0.7956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        284,
+        79,
+        20
+      ],
+      "ijk_max": [
+        294,
+        81,
+        71
+      ],
+      "world_min": [
+        5.68,
+        1.5756,
+        0.388
+      ],
+      "world_max": [
+        5.88,
+        1.6156,
+        1.408
+      ],
+      "world_center": [
+        5.78,
+        1.5956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        284,
+        119,
+        20
+      ],
+      "ijk_max": [
+        294,
+        121,
+        71
+      ],
+      "world_min": [
+        5.68,
+        2.3756,
+        0.388
+      ],
+      "world_max": [
+        5.88,
+        2.4156,
+        1.408
+      ],
+      "world_center": [
+        5.78,
+        2.3956,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        284,
+        200,
+        20
+      ],
+      "ijk_max": [
+        294,
+        202,
+        71
+      ],
+      "world_min": [
+        5.68,
+        3.9956,
+        0.388
+      ],
+      "world_max": [
+        5.88,
+        4.0356,
+        1.408
+      ],
+      "world_center": [
+        5.78,
+        4.0156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        284,
+        240,
+        20
+      ],
+      "ijk_max": [
+        294,
+        242,
+        71
+      ],
+      "world_min": [
+        5.68,
+        4.7956,
+        0.388
+      ],
+      "world_max": [
+        5.88,
+        4.8356,
+        1.408
+      ],
+      "world_center": [
+        5.78,
+        4.8156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        284,
+        280,
+        20
+      ],
+      "ijk_max": [
+        294,
+        282,
+        71
+      ],
+      "world_min": [
+        5.68,
+        5.5956,
+        0.388
+      ],
+      "world_max": [
+        5.88,
+        5.6356,
+        1.408
+      ],
+      "world_center": [
+        5.78,
+        5.6156,
+        0.898
+      ],
+      "half_extents": [
+        0.1,
+        0.02,
+        0.51
+      ],
+      "voxel_volume": 1020,
+      "occupied_count": 758,
+      "empty_count": 262,
+      "fill_ratio": 0.743137,
+      "expansion_ratio": 0.256863
+    },
+    {
+      "ijk_min": [
+        287,
+        0,
+        45
+      ],
+      "ijk_max": [
+        296,
+        39,
+        46
+      ],
+      "world_min": [
+        5.74,
+        -0.0044,
+        0.888
+      ],
+      "world_max": [
+        5.92,
+        0.7756,
+        0.908
+      ],
+      "world_center": [
+        5.83,
+        0.3856,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.39,
+        0.01
+      ],
+      "voxel_volume": 351,
+      "occupied_count": 272,
+      "empty_count": 79,
+      "fill_ratio": 0.774929,
+      "expansion_ratio": 0.225071
+    },
+    {
+      "ijk_min": [
+        287,
+        41,
+        21
+      ],
+      "ijk_max": [
+        296,
+        79,
+        22
+      ],
+      "world_min": [
+        5.74,
+        0.8156,
+        0.408
+      ],
+      "world_max": [
+        5.92,
+        1.5756,
+        0.428
+      ],
+      "world_center": [
+        5.83,
+        1.1956,
+        0.418
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        287,
+        41,
+        69
+      ],
+      "ijk_max": [
+        296,
+        79,
+        70
+      ],
+      "world_min": [
+        5.74,
+        0.8156,
+        1.368
+      ],
+      "world_max": [
+        5.92,
+        1.5756,
+        1.388
+      ],
+      "world_center": [
+        5.83,
+        1.1956,
+        1.378
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        287,
+        81,
+        45
+      ],
+      "ijk_max": [
+        296,
+        119,
+        46
+      ],
+      "world_min": [
+        5.74,
+        1.6156,
+        0.888
+      ],
+      "world_max": [
+        5.92,
+        2.3756,
+        0.908
+      ],
+      "world_center": [
+        5.83,
+        1.9956,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        287,
+        202,
+        21
+      ],
+      "ijk_max": [
+        296,
+        240,
+        22
+      ],
+      "world_min": [
+        5.74,
+        4.0356,
+        0.408
+      ],
+      "world_max": [
+        5.92,
+        4.7956,
+        0.428
+      ],
+      "world_center": [
+        5.83,
+        4.4156,
+        0.418
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        287,
+        202,
+        69
+      ],
+      "ijk_max": [
+        296,
+        240,
+        70
+      ],
+      "world_min": [
+        5.74,
+        4.0356,
+        1.368
+      ],
+      "world_max": [
+        5.92,
+        4.7956,
+        1.388
+      ],
+      "world_center": [
+        5.83,
+        4.4156,
+        1.378
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        287,
+        242,
+        45
+      ],
+      "ijk_max": [
+        296,
+        280,
+        46
+      ],
+      "world_min": [
+        5.74,
+        4.8356,
+        0.888
+      ],
+      "world_max": [
+        5.92,
+        5.5956,
+        0.908
+      ],
+      "world_center": [
+        5.83,
+        5.2156,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        287,
+        282,
+        45
+      ],
+      "ijk_max": [
+        296,
+        320,
+        46
+      ],
+      "world_min": [
+        5.74,
+        5.6356,
+        0.888
+      ],
+      "world_max": [
+        5.92,
+        6.3956,
+        0.908
+      ],
+      "world_center": [
+        5.83,
+        6.0156,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.38,
+        0.01
+      ],
+      "voxel_volume": 342,
+      "occupied_count": 266,
+      "empty_count": 76,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        0,
+        320,
+        1
+      ],
+      "ijk_max": [
+        301,
+        322,
+        91
+      ],
+      "world_min": [
+        -0.0,
+        6.3956,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        6.4356,
+        1.808
+      ],
+      "world_center": [
+        3.01,
+        6.4156,
+        0.908
+      ],
+      "half_extents": [
+        3.01,
+        0.02,
+        0.9
+      ],
+      "voxel_volume": 54180,
+      "occupied_count": 54180,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        0,
+        160,
+        1
+      ],
+      "ijk_max": [
+        301,
+        161,
+        91
+      ],
+      "world_min": [
+        -0.0,
+        3.1956,
+        0.008
+      ],
+      "world_max": [
+        6.02,
+        3.2156,
+        1.808
+      ],
+      "world_center": [
+        3.01,
+        3.2056,
+        0.908
+      ],
+      "half_extents": [
+        3.01,
+        0.01,
+        0.9
+      ],
+      "voxel_volume": 27090,
+      "occupied_count": 27090,
+      "empty_count": 0,
+      "fill_ratio": 1.0,
+      "expansion_ratio": 0.0
+    },
+    {
+      "ijk_min": [
+        23,
+        121,
+        45
+      ],
+      "ijk_max": [
+        32,
+        200,
+        46
+      ],
+      "world_min": [
+        0.46,
+        2.4156,
+        0.888
+      ],
+      "world_max": [
+        0.64,
+        3.9956,
+        0.908
+      ],
+      "world_center": [
+        0.55,
+        3.2056,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.79,
+        0.01
+      ],
+      "voxel_volume": 711,
+      "occupied_count": 555,
+      "empty_count": 156,
+      "fill_ratio": 0.780591,
+      "expansion_ratio": 0.219409
+    },
+    {
+      "ijk_min": [
+        155,
+        121,
+        45
+      ],
+      "ijk_max": [
+        164,
+        200,
+        46
+      ],
+      "world_min": [
+        3.1,
+        2.4156,
+        0.888
+      ],
+      "world_max": [
+        3.28,
+        3.9956,
+        0.908
+      ],
+      "world_center": [
+        3.19,
+        3.2056,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.79,
+        0.01
+      ],
+      "voxel_volume": 711,
+      "occupied_count": 555,
+      "empty_count": 156,
+      "fill_ratio": 0.780591,
+      "expansion_ratio": 0.219409
+    },
+    {
+      "ijk_min": [
+        287,
+        121,
+        45
+      ],
+      "ijk_max": [
+        296,
+        200,
+        46
+      ],
+      "world_min": [
+        5.74,
+        2.4156,
+        0.888
+      ],
+      "world_max": [
+        5.92,
+        3.9956,
+        0.908
+      ],
+      "world_center": [
+        5.83,
+        3.2056,
+        0.898
+      ],
+      "half_extents": [
+        0.09,
+        0.79,
+        0.01
+      ],
+      "voxel_volume": 711,
+      "occupied_count": 553,
+      "empty_count": 158,
+      "fill_ratio": 0.777778,
+      "expansion_ratio": 0.222222
+    },
+    {
+      "ijk_min": [
+        292,
+        34,
+        1
+      ],
+      "ijk_max": [
+        294,
+        39,
+        12
+      ],
+      "world_min": [
+        5.84,
+        0.6756,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        0.7756,
+        0.228
+      ],
+      "world_center": [
+        5.86,
+        0.7256,
+        0.118
+      ],
+      "half_extents": [
+        0.02,
+        0.05,
+        0.11
+      ],
+      "voxel_volume": 110,
+      "occupied_count": 97,
+      "empty_count": 13,
+      "fill_ratio": 0.881818,
+      "expansion_ratio": 0.118182
+    },
+    {
+      "ijk_min": [
+        292,
+        74,
+        1
+      ],
+      "ijk_max": [
+        294,
+        79,
+        12
+      ],
+      "world_min": [
+        5.84,
+        1.4756,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        1.5756,
+        0.228
+      ],
+      "world_center": [
+        5.86,
+        1.5256,
+        0.118
+      ],
+      "half_extents": [
+        0.02,
+        0.05,
+        0.11
+      ],
+      "voxel_volume": 110,
+      "occupied_count": 97,
+      "empty_count": 13,
+      "fill_ratio": 0.881818,
+      "expansion_ratio": 0.118182
+    },
+    {
+      "ijk_min": [
+        292,
+        114,
+        1
+      ],
+      "ijk_max": [
+        294,
+        119,
+        12
+      ],
+      "world_min": [
+        5.84,
+        2.2756,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        2.3756,
+        0.228
+      ],
+      "world_center": [
+        5.86,
+        2.3256,
+        0.118
+      ],
+      "half_extents": [
+        0.02,
+        0.05,
+        0.11
+      ],
+      "voxel_volume": 110,
+      "occupied_count": 97,
+      "empty_count": 13,
+      "fill_ratio": 0.881818,
+      "expansion_ratio": 0.118182
+    },
+    {
+      "ijk_min": [
+        292,
+        195,
+        1
+      ],
+      "ijk_max": [
+        294,
+        200,
+        12
+      ],
+      "world_min": [
+        5.84,
+        3.8956,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        3.9956,
+        0.228
+      ],
+      "world_center": [
+        5.86,
+        3.9456,
+        0.118
+      ],
+      "half_extents": [
+        0.02,
+        0.05,
+        0.11
+      ],
+      "voxel_volume": 110,
+      "occupied_count": 97,
+      "empty_count": 13,
+      "fill_ratio": 0.881818,
+      "expansion_ratio": 0.118182
+    },
+    {
+      "ijk_min": [
+        292,
+        235,
+        1
+      ],
+      "ijk_max": [
+        294,
+        240,
+        12
+      ],
+      "world_min": [
+        5.84,
+        4.6956,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        4.7956,
+        0.228
+      ],
+      "world_center": [
+        5.86,
+        4.7456,
+        0.118
+      ],
+      "half_extents": [
+        0.02,
+        0.05,
+        0.11
+      ],
+      "voxel_volume": 110,
+      "occupied_count": 97,
+      "empty_count": 13,
+      "fill_ratio": 0.881818,
+      "expansion_ratio": 0.118182
+    },
+    {
+      "ijk_min": [
+        292,
+        275,
+        1
+      ],
+      "ijk_max": [
+        294,
+        280,
+        12
+      ],
+      "world_min": [
+        5.84,
+        5.4956,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        5.5956,
+        0.228
+      ],
+      "world_center": [
+        5.86,
+        5.5456,
+        0.118
+      ],
+      "half_extents": [
+        0.02,
+        0.05,
+        0.11
+      ],
+      "voxel_volume": 110,
+      "occupied_count": 97,
+      "empty_count": 13,
+      "fill_ratio": 0.881818,
+      "expansion_ratio": 0.118182
+    },
+    {
+      "ijk_min": [
+        18,
+        39,
+        71
+      ],
+      "ijk_max": [
+        34,
+        41,
+        74
+      ],
+      "world_min": [
+        0.36,
+        0.7756,
+        1.408
+      ],
+      "world_max": [
+        0.68,
+        0.8156,
+        1.468
+      ],
+      "world_center": [
+        0.52,
+        0.7956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        18,
+        79,
+        71
+      ],
+      "ijk_max": [
+        34,
+        81,
+        74
+      ],
+      "world_min": [
+        0.36,
+        1.5756,
+        1.408
+      ],
+      "world_max": [
+        0.68,
+        1.6156,
+        1.468
+      ],
+      "world_center": [
+        0.52,
+        1.5956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        18,
+        119,
+        71
+      ],
+      "ijk_max": [
+        34,
+        121,
+        74
+      ],
+      "world_min": [
+        0.36,
+        2.3756,
+        1.408
+      ],
+      "world_max": [
+        0.68,
+        2.4156,
+        1.468
+      ],
+      "world_center": [
+        0.52,
+        2.3956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        18,
+        200,
+        71
+      ],
+      "ijk_max": [
+        34,
+        202,
+        74
+      ],
+      "world_min": [
+        0.36,
+        3.9956,
+        1.408
+      ],
+      "world_max": [
+        0.68,
+        4.0356,
+        1.468
+      ],
+      "world_center": [
+        0.52,
+        4.0156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        18,
+        240,
+        71
+      ],
+      "ijk_max": [
+        34,
+        242,
+        74
+      ],
+      "world_min": [
+        0.36,
+        4.7956,
+        1.408
+      ],
+      "world_max": [
+        0.68,
+        4.8356,
+        1.468
+      ],
+      "world_center": [
+        0.52,
+        4.8156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        18,
+        280,
+        71
+      ],
+      "ijk_max": [
+        34,
+        282,
+        74
+      ],
+      "world_min": [
+        0.36,
+        5.5956,
+        1.408
+      ],
+      "world_max": [
+        0.68,
+        5.6356,
+        1.468
+      ],
+      "world_center": [
+        0.52,
+        5.6156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        150,
+        39,
+        71
+      ],
+      "ijk_max": [
+        166,
+        41,
+        74
+      ],
+      "world_min": [
+        3.0,
+        0.7756,
+        1.408
+      ],
+      "world_max": [
+        3.32,
+        0.8156,
+        1.468
+      ],
+      "world_center": [
+        3.16,
+        0.7956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        150,
+        79,
+        71
+      ],
+      "ijk_max": [
+        166,
+        81,
+        74
+      ],
+      "world_min": [
+        3.0,
+        1.5756,
+        1.408
+      ],
+      "world_max": [
+        3.32,
+        1.6156,
+        1.468
+      ],
+      "world_center": [
+        3.16,
+        1.5956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        150,
+        119,
+        71
+      ],
+      "ijk_max": [
+        166,
+        121,
+        74
+      ],
+      "world_min": [
+        3.0,
+        2.3756,
+        1.408
+      ],
+      "world_max": [
+        3.32,
+        2.4156,
+        1.468
+      ],
+      "world_center": [
+        3.16,
+        2.3956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        150,
+        200,
+        71
+      ],
+      "ijk_max": [
+        166,
+        202,
+        74
+      ],
+      "world_min": [
+        3.0,
+        3.9956,
+        1.408
+      ],
+      "world_max": [
+        3.32,
+        4.0356,
+        1.468
+      ],
+      "world_center": [
+        3.16,
+        4.0156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        150,
+        240,
+        71
+      ],
+      "ijk_max": [
+        166,
+        242,
+        74
+      ],
+      "world_min": [
+        3.0,
+        4.7956,
+        1.408
+      ],
+      "world_max": [
+        3.32,
+        4.8356,
+        1.468
+      ],
+      "world_center": [
+        3.16,
+        4.8156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        150,
+        280,
+        71
+      ],
+      "ijk_max": [
+        166,
+        282,
+        74
+      ],
+      "world_min": [
+        3.0,
+        5.5956,
+        1.408
+      ],
+      "world_max": [
+        3.32,
+        5.6356,
+        1.468
+      ],
+      "world_center": [
+        3.16,
+        5.6156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        282,
+        39,
+        71
+      ],
+      "ijk_max": [
+        298,
+        41,
+        74
+      ],
+      "world_min": [
+        5.64,
+        0.7756,
+        1.408
+      ],
+      "world_max": [
+        5.96,
+        0.8156,
+        1.468
+      ],
+      "world_center": [
+        5.8,
+        0.7956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        282,
+        79,
+        71
+      ],
+      "ijk_max": [
+        298,
+        81,
+        74
+      ],
+      "world_min": [
+        5.64,
+        1.5756,
+        1.408
+      ],
+      "world_max": [
+        5.96,
+        1.6156,
+        1.468
+      ],
+      "world_center": [
+        5.8,
+        1.5956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        282,
+        119,
+        71
+      ],
+      "ijk_max": [
+        298,
+        121,
+        74
+      ],
+      "world_min": [
+        5.64,
+        2.3756,
+        1.408
+      ],
+      "world_max": [
+        5.96,
+        2.4156,
+        1.468
+      ],
+      "world_center": [
+        5.8,
+        2.3956,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        282,
+        200,
+        71
+      ],
+      "ijk_max": [
+        298,
+        202,
+        74
+      ],
+      "world_min": [
+        5.64,
+        3.9956,
+        1.408
+      ],
+      "world_max": [
+        5.96,
+        4.0356,
+        1.468
+      ],
+      "world_center": [
+        5.8,
+        4.0156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        282,
+        240,
+        71
+      ],
+      "ijk_max": [
+        298,
+        242,
+        74
+      ],
+      "world_min": [
+        5.64,
+        4.7956,
+        1.408
+      ],
+      "world_max": [
+        5.96,
+        4.8356,
+        1.468
+      ],
+      "world_center": [
+        5.8,
+        4.8156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        282,
+        280,
+        71
+      ],
+      "ijk_max": [
+        298,
+        282,
+        74
+      ],
+      "world_min": [
+        5.64,
+        5.5956,
+        1.408
+      ],
+      "world_max": [
+        5.96,
+        5.6356,
+        1.468
+      ],
+      "world_center": [
+        5.8,
+        5.6156,
+        1.438
+      ],
+      "half_extents": [
+        0.16,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 96,
+      "occupied_count": 68,
+      "empty_count": 28,
+      "fill_ratio": 0.708333,
+      "expansion_ratio": 0.291667
+    },
+    {
+      "ijk_min": [
+        15,
+        39,
+        74
+      ],
+      "ijk_max": [
+        35,
+        41,
+        77
+      ],
+      "world_min": [
+        0.3,
+        0.7756,
+        1.468
+      ],
+      "world_max": [
+        0.7,
+        0.8156,
+        1.528
+      ],
+      "world_center": [
+        0.5,
+        0.7956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        15,
+        79,
+        74
+      ],
+      "ijk_max": [
+        35,
+        81,
+        77
+      ],
+      "world_min": [
+        0.3,
+        1.5756,
+        1.468
+      ],
+      "world_max": [
+        0.7,
+        1.6156,
+        1.528
+      ],
+      "world_center": [
+        0.5,
+        1.5956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        15,
+        119,
+        74
+      ],
+      "ijk_max": [
+        35,
+        121,
+        77
+      ],
+      "world_min": [
+        0.3,
+        2.3756,
+        1.468
+      ],
+      "world_max": [
+        0.7,
+        2.4156,
+        1.528
+      ],
+      "world_center": [
+        0.5,
+        2.3956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        15,
+        200,
+        74
+      ],
+      "ijk_max": [
+        35,
+        202,
+        77
+      ],
+      "world_min": [
+        0.3,
+        3.9956,
+        1.468
+      ],
+      "world_max": [
+        0.7,
+        4.0356,
+        1.528
+      ],
+      "world_center": [
+        0.5,
+        4.0156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        15,
+        240,
+        74
+      ],
+      "ijk_max": [
+        35,
+        242,
+        77
+      ],
+      "world_min": [
+        0.3,
+        4.7956,
+        1.468
+      ],
+      "world_max": [
+        0.7,
+        4.8356,
+        1.528
+      ],
+      "world_center": [
+        0.5,
+        4.8156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        15,
+        280,
+        74
+      ],
+      "ijk_max": [
+        35,
+        282,
+        77
+      ],
+      "world_min": [
+        0.3,
+        5.5956,
+        1.468
+      ],
+      "world_max": [
+        0.7,
+        5.6356,
+        1.528
+      ],
+      "world_center": [
+        0.5,
+        5.6156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        147,
+        39,
+        74
+      ],
+      "ijk_max": [
+        167,
+        41,
+        77
+      ],
+      "world_min": [
+        2.94,
+        0.7756,
+        1.468
+      ],
+      "world_max": [
+        3.34,
+        0.8156,
+        1.528
+      ],
+      "world_center": [
+        3.14,
+        0.7956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        147,
+        79,
+        74
+      ],
+      "ijk_max": [
+        167,
+        81,
+        77
+      ],
+      "world_min": [
+        2.94,
+        1.5756,
+        1.468
+      ],
+      "world_max": [
+        3.34,
+        1.6156,
+        1.528
+      ],
+      "world_center": [
+        3.14,
+        1.5956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        147,
+        119,
+        74
+      ],
+      "ijk_max": [
+        167,
+        121,
+        77
+      ],
+      "world_min": [
+        2.94,
+        2.3756,
+        1.468
+      ],
+      "world_max": [
+        3.34,
+        2.4156,
+        1.528
+      ],
+      "world_center": [
+        3.14,
+        2.3956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        147,
+        200,
+        74
+      ],
+      "ijk_max": [
+        167,
+        202,
+        77
+      ],
+      "world_min": [
+        2.94,
+        3.9956,
+        1.468
+      ],
+      "world_max": [
+        3.34,
+        4.0356,
+        1.528
+      ],
+      "world_center": [
+        3.14,
+        4.0156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        147,
+        240,
+        74
+      ],
+      "ijk_max": [
+        167,
+        242,
+        77
+      ],
+      "world_min": [
+        2.94,
+        4.7956,
+        1.468
+      ],
+      "world_max": [
+        3.34,
+        4.8356,
+        1.528
+      ],
+      "world_center": [
+        3.14,
+        4.8156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        147,
+        280,
+        74
+      ],
+      "ijk_max": [
+        167,
+        282,
+        77
+      ],
+      "world_min": [
+        2.94,
+        5.5956,
+        1.468
+      ],
+      "world_max": [
+        3.34,
+        5.6356,
+        1.528
+      ],
+      "world_center": [
+        3.14,
+        5.6156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        279,
+        39,
+        74
+      ],
+      "ijk_max": [
+        299,
+        41,
+        77
+      ],
+      "world_min": [
+        5.58,
+        0.7756,
+        1.468
+      ],
+      "world_max": [
+        5.98,
+        0.8156,
+        1.528
+      ],
+      "world_center": [
+        5.78,
+        0.7956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        279,
+        79,
+        74
+      ],
+      "ijk_max": [
+        299,
+        81,
+        77
+      ],
+      "world_min": [
+        5.58,
+        1.5756,
+        1.468
+      ],
+      "world_max": [
+        5.98,
+        1.6156,
+        1.528
+      ],
+      "world_center": [
+        5.78,
+        1.5956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        279,
+        119,
+        74
+      ],
+      "ijk_max": [
+        299,
+        121,
+        77
+      ],
+      "world_min": [
+        5.58,
+        2.3756,
+        1.468
+      ],
+      "world_max": [
+        5.98,
+        2.4156,
+        1.528
+      ],
+      "world_center": [
+        5.78,
+        2.3956,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        279,
+        200,
+        74
+      ],
+      "ijk_max": [
+        299,
+        202,
+        77
+      ],
+      "world_min": [
+        5.58,
+        3.9956,
+        1.468
+      ],
+      "world_max": [
+        5.98,
+        4.0356,
+        1.528
+      ],
+      "world_center": [
+        5.78,
+        4.0156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        279,
+        240,
+        74
+      ],
+      "ijk_max": [
+        299,
+        242,
+        77
+      ],
+      "world_min": [
+        5.58,
+        4.7956,
+        1.468
+      ],
+      "world_max": [
+        5.98,
+        4.8356,
+        1.528
+      ],
+      "world_center": [
+        5.78,
+        4.8156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        279,
+        280,
+        74
+      ],
+      "ijk_max": [
+        299,
+        282,
+        77
+      ],
+      "world_min": [
+        5.58,
+        5.5956,
+        1.468
+      ],
+      "world_max": [
+        5.98,
+        5.6356,
+        1.528
+      ],
+      "world_center": [
+        5.78,
+        5.6156,
+        1.498
+      ],
+      "half_extents": [
+        0.2,
+        0.02,
+        0.03
+      ],
+      "voxel_volume": 120,
+      "occupied_count": 84,
+      "empty_count": 36,
+      "fill_ratio": 0.7,
+      "expansion_ratio": 0.3
+    },
+    {
+      "ijk_min": [
+        292,
+        41,
+        1
+      ],
+      "ijk_max": [
+        294,
+        52,
+        10
+      ],
+      "world_min": [
+        5.84,
+        0.8156,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        1.0356,
+        0.188
+      ],
+      "world_center": [
+        5.86,
+        0.9256,
+        0.098
+      ],
+      "half_extents": [
+        0.02,
+        0.11,
+        0.09
+      ],
+      "voxel_volume": 198,
+      "occupied_count": 141,
+      "empty_count": 57,
+      "fill_ratio": 0.712121,
+      "expansion_ratio": 0.287879
+    },
+    {
+      "ijk_min": [
+        292,
+        81,
+        1
+      ],
+      "ijk_max": [
+        294,
+        92,
+        10
+      ],
+      "world_min": [
+        5.84,
+        1.6156,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        1.8356,
+        0.188
+      ],
+      "world_center": [
+        5.86,
+        1.7256,
+        0.098
+      ],
+      "half_extents": [
+        0.02,
+        0.11,
+        0.09
+      ],
+      "voxel_volume": 198,
+      "occupied_count": 141,
+      "empty_count": 57,
+      "fill_ratio": 0.712121,
+      "expansion_ratio": 0.287879
+    },
+    {
+      "ijk_min": [
+        292,
+        121,
+        1
+      ],
+      "ijk_max": [
+        294,
+        132,
+        10
+      ],
+      "world_min": [
+        5.84,
+        2.4156,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        2.6356,
+        0.188
+      ],
+      "world_center": [
+        5.86,
+        2.5256,
+        0.098
+      ],
+      "half_extents": [
+        0.02,
+        0.11,
+        0.09
+      ],
+      "voxel_volume": 198,
+      "occupied_count": 141,
+      "empty_count": 57,
+      "fill_ratio": 0.712121,
+      "expansion_ratio": 0.287879
+    },
+    {
+      "ijk_min": [
+        292,
+        202,
+        1
+      ],
+      "ijk_max": [
+        294,
+        213,
+        10
+      ],
+      "world_min": [
+        5.84,
+        4.0356,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        4.2556,
+        0.188
+      ],
+      "world_center": [
+        5.86,
+        4.1456,
+        0.098
+      ],
+      "half_extents": [
+        0.02,
+        0.11,
+        0.09
+      ],
+      "voxel_volume": 198,
+      "occupied_count": 141,
+      "empty_count": 57,
+      "fill_ratio": 0.712121,
+      "expansion_ratio": 0.287879
+    },
+    {
+      "ijk_min": [
+        292,
+        242,
+        1
+      ],
+      "ijk_max": [
+        294,
+        253,
+        10
+      ],
+      "world_min": [
+        5.84,
+        4.8356,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        5.0556,
+        0.188
+      ],
+      "world_center": [
+        5.86,
+        4.9456,
+        0.098
+      ],
+      "half_extents": [
+        0.02,
+        0.11,
+        0.09
+      ],
+      "voxel_volume": 198,
+      "occupied_count": 141,
+      "empty_count": 57,
+      "fill_ratio": 0.712121,
+      "expansion_ratio": 0.287879
+    },
+    {
+      "ijk_min": [
+        292,
+        282,
+        1
+      ],
+      "ijk_max": [
+        294,
+        293,
+        10
+      ],
+      "world_min": [
+        5.84,
+        5.6356,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        5.8556,
+        0.188
+      ],
+      "world_center": [
+        5.86,
+        5.7456,
+        0.098
+      ],
+      "half_extents": [
+        0.02,
+        0.11,
+        0.09
+      ],
+      "voxel_volume": 198,
+      "occupied_count": 141,
+      "empty_count": 57,
+      "fill_ratio": 0.712121,
+      "expansion_ratio": 0.287879
+    },
+    {
+      "ijk_min": [
+        9,
+        39,
+        77
+      ],
+      "ijk_max": [
+        37,
+        41,
+        83
+      ],
+      "world_min": [
+        0.18,
+        0.7756,
+        1.528
+      ],
+      "world_max": [
+        0.74,
+        0.8156,
+        1.648
+      ],
+      "world_center": [
+        0.46,
+        0.7956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        9,
+        79,
+        77
+      ],
+      "ijk_max": [
+        37,
+        81,
+        83
+      ],
+      "world_min": [
+        0.18,
+        1.5756,
+        1.528
+      ],
+      "world_max": [
+        0.74,
+        1.6156,
+        1.648
+      ],
+      "world_center": [
+        0.46,
+        1.5956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        9,
+        119,
+        77
+      ],
+      "ijk_max": [
+        37,
+        121,
+        83
+      ],
+      "world_min": [
+        0.18,
+        2.3756,
+        1.528
+      ],
+      "world_max": [
+        0.74,
+        2.4156,
+        1.648
+      ],
+      "world_center": [
+        0.46,
+        2.3956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        9,
+        200,
+        77
+      ],
+      "ijk_max": [
+        37,
+        202,
+        83
+      ],
+      "world_min": [
+        0.18,
+        3.9956,
+        1.528
+      ],
+      "world_max": [
+        0.74,
+        4.0356,
+        1.648
+      ],
+      "world_center": [
+        0.46,
+        4.0156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        9,
+        240,
+        77
+      ],
+      "ijk_max": [
+        37,
+        242,
+        83
+      ],
+      "world_min": [
+        0.18,
+        4.7956,
+        1.528
+      ],
+      "world_max": [
+        0.74,
+        4.8356,
+        1.648
+      ],
+      "world_center": [
+        0.46,
+        4.8156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        9,
+        280,
+        77
+      ],
+      "ijk_max": [
+        37,
+        282,
+        83
+      ],
+      "world_min": [
+        0.18,
+        5.5956,
+        1.528
+      ],
+      "world_max": [
+        0.74,
+        5.6356,
+        1.648
+      ],
+      "world_center": [
+        0.46,
+        5.6156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        141,
+        39,
+        77
+      ],
+      "ijk_max": [
+        169,
+        41,
+        83
+      ],
+      "world_min": [
+        2.82,
+        0.7756,
+        1.528
+      ],
+      "world_max": [
+        3.38,
+        0.8156,
+        1.648
+      ],
+      "world_center": [
+        3.1,
+        0.7956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        141,
+        79,
+        77
+      ],
+      "ijk_max": [
+        169,
+        81,
+        83
+      ],
+      "world_min": [
+        2.82,
+        1.5756,
+        1.528
+      ],
+      "world_max": [
+        3.38,
+        1.6156,
+        1.648
+      ],
+      "world_center": [
+        3.1,
+        1.5956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        141,
+        119,
+        77
+      ],
+      "ijk_max": [
+        169,
+        121,
+        83
+      ],
+      "world_min": [
+        2.82,
+        2.3756,
+        1.528
+      ],
+      "world_max": [
+        3.38,
+        2.4156,
+        1.648
+      ],
+      "world_center": [
+        3.1,
+        2.3956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        141,
+        200,
+        77
+      ],
+      "ijk_max": [
+        169,
+        202,
+        83
+      ],
+      "world_min": [
+        2.82,
+        3.9956,
+        1.528
+      ],
+      "world_max": [
+        3.38,
+        4.0356,
+        1.648
+      ],
+      "world_center": [
+        3.1,
+        4.0156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        141,
+        240,
+        77
+      ],
+      "ijk_max": [
+        169,
+        242,
+        83
+      ],
+      "world_min": [
+        2.82,
+        4.7956,
+        1.528
+      ],
+      "world_max": [
+        3.38,
+        4.8356,
+        1.648
+      ],
+      "world_center": [
+        3.1,
+        4.8156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        141,
+        280,
+        77
+      ],
+      "ijk_max": [
+        169,
+        282,
+        83
+      ],
+      "world_min": [
+        2.82,
+        5.5956,
+        1.528
+      ],
+      "world_max": [
+        3.38,
+        5.6356,
+        1.648
+      ],
+      "world_center": [
+        3.1,
+        5.6156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        273,
+        39,
+        77
+      ],
+      "ijk_max": [
+        301,
+        41,
+        83
+      ],
+      "world_min": [
+        5.46,
+        0.7756,
+        1.528
+      ],
+      "world_max": [
+        6.02,
+        0.8156,
+        1.648
+      ],
+      "world_center": [
+        5.74,
+        0.7956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        273,
+        79,
+        77
+      ],
+      "ijk_max": [
+        301,
+        81,
+        83
+      ],
+      "world_min": [
+        5.46,
+        1.5756,
+        1.528
+      ],
+      "world_max": [
+        6.02,
+        1.6156,
+        1.648
+      ],
+      "world_center": [
+        5.74,
+        1.5956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        273,
+        119,
+        77
+      ],
+      "ijk_max": [
+        301,
+        121,
+        83
+      ],
+      "world_min": [
+        5.46,
+        2.3756,
+        1.528
+      ],
+      "world_max": [
+        6.02,
+        2.4156,
+        1.648
+      ],
+      "world_center": [
+        5.74,
+        2.3956,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        273,
+        200,
+        77
+      ],
+      "ijk_max": [
+        301,
+        202,
+        83
+      ],
+      "world_min": [
+        5.46,
+        3.9956,
+        1.528
+      ],
+      "world_max": [
+        6.02,
+        4.0356,
+        1.648
+      ],
+      "world_center": [
+        5.74,
+        4.0156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        273,
+        240,
+        77
+      ],
+      "ijk_max": [
+        301,
+        242,
+        83
+      ],
+      "world_min": [
+        5.46,
+        4.7956,
+        1.528
+      ],
+      "world_max": [
+        6.02,
+        4.8356,
+        1.648
+      ],
+      "world_center": [
+        5.74,
+        4.8156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        273,
+        280,
+        77
+      ],
+      "ijk_max": [
+        301,
+        282,
+        83
+      ],
+      "world_min": [
+        5.46,
+        5.5956,
+        1.528
+      ],
+      "world_max": [
+        6.02,
+        5.6356,
+        1.648
+      ],
+      "world_center": [
+        5.74,
+        5.6156,
+        1.588
+      ],
+      "half_extents": [
+        0.28,
+        0.02,
+        0.06
+      ],
+      "voxel_volume": 336,
+      "occupied_count": 228,
+      "empty_count": 108,
+      "fill_ratio": 0.678571,
+      "expansion_ratio": 0.321429
+    },
+    {
+      "ijk_min": [
+        160,
+        0,
+        1
+      ],
+      "ijk_max": [
+        162,
+        320,
+        91
+      ],
+      "world_min": [
+        3.2,
+        -0.0044,
+        0.008
+      ],
+      "world_max": [
+        3.24,
+        6.3956,
+        1.808
+      ],
+      "world_center": [
+        3.22,
+        3.1956,
+        0.908
+      ],
+      "half_extents": [
+        0.02,
+        3.2,
+        0.9
+      ],
+      "voxel_volume": 57600,
+      "occupied_count": 57158,
+      "empty_count": 442,
+      "fill_ratio": 0.992326,
+      "expansion_ratio": 0.007674
+    },
+    {
+      "ijk_min": [
+        293,
+        0,
+        1
+      ],
+      "ijk_max": [
+        294,
+        320,
+        91
+      ],
+      "world_min": [
+        5.86,
+        -0.0044,
+        0.008
+      ],
+      "world_max": [
+        5.88,
+        6.3956,
+        1.808
+      ],
+      "world_center": [
+        5.87,
+        3.1956,
+        0.908
+      ],
+      "half_extents": [
+        0.01,
+        3.2,
+        0.9
+      ],
+      "voxel_volume": 28800,
+      "occupied_count": 27950,
+      "empty_count": 850,
+      "fill_ratio": 0.970486,
+      "expansion_ratio": 0.029514
+    },
+    {
+      "ijk_min": [
+        28,
+        0,
+        1
+      ],
+      "ijk_max": [
+        30,
+        320,
+        91
+      ],
+      "world_min": [
+        0.56,
+        -0.0044,
+        0.008
+      ],
+      "world_max": [
+        0.6,
+        6.3956,
+        1.808
+      ],
+      "world_center": [
+        0.58,
+        3.1956,
+        0.908
+      ],
+      "half_extents": [
+        0.02,
+        3.2,
+        0.9
+      ],
+      "voxel_volume": 57600,
+      "occupied_count": 55798,
+      "empty_count": 1802,
+      "fill_ratio": 0.968715,
+      "expansion_ratio": 0.031285
+    }
+  ]
+}

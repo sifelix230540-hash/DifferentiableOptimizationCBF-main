@@ -1,0 +1,3798 @@
+{
+  "dimension": 6,
+  "num_collision_samples": 43,
+  "voxel_size": 0.08,
+  "min_cluster_size": 24,
+  "normalization_lower": [
+    -6.2832,
+    -6.2832,
+    -6.2832,
+    -6.2832,
+    -6.2832,
+    -6.2832
+  ],
+  "normalization_span": [
+    12.5664,
+    12.5664,
+    12.5664,
+    12.5664,
+    12.5664,
+    12.5664
+  ],
+  "clusters": [],
+  "joint_indices": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "joint_names": [
+    "link04",
+    "link05",
+    "link06",
+    "link07",
+    "link08",
+    "link09"
+  ],
+  "joint_limits": [
+    [
+      -6.2832,
+      6.2832
+    ],
+    [
+      -6.2832,
+      6.2832
+    ],
+    [
+      -6.2832,
+      6.2832
+    ],
+    [
+      -6.2832,
+      6.2832
+    ],
+    [
+      -6.2832,
+      6.2832
+    ],
+    [
+      -6.2832,
+      6.2832
+    ]
+  ],
+  "num_samples": 200,
+  "num_collision_samples_total": 43,
+  "collision_ratio": 0.215,
+  "penetration_thresh": -0.001,
+  "min_index_gap": 2,
+  "query_distance": 0.12,
+  "sample_mode": "collision_only",
+  "boundary_band": 0.02,
+  "monitored_pairs": [
+    [
+      4,
+      6
+    ],
+    [
+      4,
+      7
+    ],
+    [
+      4,
+      8
+    ],
+    [
+      4,
+      9
+    ],
+    [
+      5,
+      7
+    ],
+    [
+      5,
+      8
+    ],
+    [
+      5,
+      9
+    ],
+    [
+      6,
+      8
+    ],
+    [
+      6,
+      9
+    ],
+    [
+      7,
+      9
+    ]
+  ],
+  "selected_metrics_preview": [
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.0054432734925338065,
+      "contact_active_pair": [
+        5,
+        7
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0015003632917120278,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499628527694435,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0008677194649522035,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.008115945097119513,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0054432734925338065,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0037198556272283138,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.024001682825587546,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028024050179229074,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.03532447037224712,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02804314522929757,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        5,
+        7
+      ],
+      "contact_penetration_depth": -0.011850112274209932,
+      "contact_active_pair": [
+        5,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.003969355756696015,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.03157009583346649,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.05060093094932666,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.10503523357798207,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.004213958783210489,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.011850112274209932,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.029452099187362277,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.017984760163602495,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.003955052678190928,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028114275982952318,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.009557069971414832,
+      "contact_active_pair": [
+        4,
+        6
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009557069971414832,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004500230382086995,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.07630807572771382,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.07686222755547996,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.008444332921914372,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.04056472293365935,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.05460501429914771,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028079378015822377,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.027708810139824964,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028011727671959162,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        8
+      ],
+      "contact_penetration_depth": -0.005952388133644074,
+      "contact_active_pair": [
+        5,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.02324421795248209,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.010271356505556337,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.00418443885792829,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005406846959757872,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005893261724445429,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005952388133644074,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005610388626794315,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028013476850625888,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.060521335274620884,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02815477698390338,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        8
+      ],
+      "contact_penetration_depth": -0.00563200434150036,
+      "contact_active_pair": [
+        5,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.08895919588931582,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.06391693970578458,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.003096867061573492,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.11584864497725837,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0573707872102588,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.00563200434150036,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0051855639200638695,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02815603147030717,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.11784201416635093,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027959327537121097,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.01962139534702534,
+      "contact_active_pair": [
+        5,
+        7
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0015002727863874356,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499803743009261,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.011807024097198686,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0446614452517476,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.01962139534702534,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0024399294377633212,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.045188096877611446,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028093548301334523,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.044526757167438376,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028125528607142767,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        8
+      ],
+      "contact_penetration_depth": -0.0037226478885562697,
+      "contact_active_pair": [
+        5,
+        7
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.04179149561074779,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.0245041602182261,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.00019094356165955532,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.000728111454957171,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0037226478885562697,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.002404170140030315,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.017620835437299982,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028024957470957273,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.031126008334976665,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028087032768398204,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        9
+      ],
+      "contact_penetration_depth": -0.005163240322509361,
+      "contact_active_pair": [
+        4,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.06856354545275381,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.05512090724426441,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.013275440778917215,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005163240322509361,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.055744722893722044,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.02645910670798231,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.025755954416914674,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028012002403668277,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.03445145208598588,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02800776234780172,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.016356390873875585,
+      "contact_active_pair": [
+        4,
+        6
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.016356390873875585,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.008450530190246596,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.09462147592114749,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.11452921535532384,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0036517209801901346,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.06496547065767047,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.05105683140018357,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02815631330272699,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.04476261039653945,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028106137506821723,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.017245838803158796,
+      "contact_active_pair": [
+        4,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.006319295042964175,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004500391132423043,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.017245838803158796,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.10270079381830345,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.010285929240838324,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.006090110382398138,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.006157583755188049,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028083501638391913,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.09738383502470163,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027978917608864198,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.0057688325480365135,
+      "contact_active_pair": [
+        6,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0007918154909868338,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.005719915895144567,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.07175253549384551,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.07103670998147858,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0030784894613657974,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005751362208540903,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.04344222401433652,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.01311735914153711,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0057688325480365135,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027990128706323482,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.01482875597725832,
+      "contact_active_pair": [
+        5,
+        7
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.004072546151057288,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004500196811632745,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.04015317366841142,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.03765455746731438,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.01482875597725832,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0470424851198181,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.07461031791711878,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028026232561458073,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.03163513143218851,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02798173969384987,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        6,
+        9
+      ],
+      "contact_penetration_depth": -0.008070071730356138,
+      "contact_active_pair": [
+        6,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.267013251075893,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.2899505640811268,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.23289628780065386,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.2987314129486889,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.21740936379287132,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.1346628414086656,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.14406958785468887,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.0070076338867271215,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.008070071730356138,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02814564648965529,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        6,
+        9
+      ],
+      "contact_penetration_depth": -0.023431481704250228,
+      "contact_active_pair": [
+        6,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.2918583893173834,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.6388151616072113,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.5535184954270187,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.5533710768455885,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.23426810085802807,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.15133639367061008,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.15118257739557908,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.0041959171297280785,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.023431481704250228,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027961663242630132,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        5,
+        8
+      ],
+      "contact_penetration_depth": -0.02080192643016739,
+      "contact_active_pair": [
+        5,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.08368825961057685,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.08873593155042749,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.040165232535430466,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0015489266372315875,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.049603000551370485,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.004557077479114795,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.02080192643016739,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028074410564025893,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.054036493933591695,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028139739292234765,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        9
+      ],
+      "contact_penetration_depth": -0.011200264197221574,
+      "contact_active_pair": [
+        4,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0878130910723663,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.06980382173192455,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.014786520190200225,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.011200264197221574,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.03614866274074931,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.004926242916516383,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0014752632942323166,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028031223153186888,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.046326363785537894,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02800541659671998,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.013563933942691623,
+      "contact_active_pair": [
+        5,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0056885999807204145,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499773106557202,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.013007601197120175,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.006688866577899387,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005115327270437333,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005124501150388195,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.013563933942691623,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02804815538260082,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.04970519906794802,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028130118041118538,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.017526373463124176,
+      "contact_active_pair": [
+        5,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0008160962618425244,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499791936198705,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.015106573054450666,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.007103641397789323,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009198535261595177,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.002597133780741815,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.017526373463124176,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028067923026599675,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.03543650298229275,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028072709556715612,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.01809638800553932,
+      "contact_active_pair": [
+        5,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.001500309581924705,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499563035444359,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.02986380159582179,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.030495867413468786,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.013229140234062492,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.01809638800553932,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.017948900777049342,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02807134285146466,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0723705461024549,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027958624705181023,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        6,
+        9
+      ],
+      "contact_penetration_depth": -0.005138887671399427,
+      "contact_active_pair": [
+        6,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.1071827883336843,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.11686024902856397,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.12503958940701823,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.12803769225467646,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.09035948938551619,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.041625751528247164,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.10372038123327892,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.012641410402354357,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005138887671399427,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028144154337713584,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.009275451957133668,
+      "contact_active_pair": [
+        5,
+        7
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.00060034701546236,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.00928856859405031,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.06920918648029659,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.10053301647565217,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009275451957133668,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.057209050641394234,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.11239888375656933,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02803903633194042,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.04121036818188103,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027970965067980632,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        8
+      ],
+      "contact_penetration_depth": -0.031545497493239025,
+      "contact_active_pair": [
+        4,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.03231713393820841,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.024475703386941956,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0040943688761856676,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.031545497493239025,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009323178284132875,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.003731139481501244,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.009564845225249044,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02799280236359221,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.03268941860593533,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028045224964123,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        5,
+        8
+      ],
+      "contact_penetration_depth": -0.010292422790318497,
+      "contact_active_pair": [
+        5,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.08325585986038415,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.09141507622652374,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0826060525506754,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.1277594406573248,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.06653337564831731,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.010292422790318497,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0715077062856047,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.016434460587486408,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009787492738845494,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027979432194837204,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.02390041133521835,
+      "contact_active_pair": [
+        5,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.01745371359145273,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.00450027320026631,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.011888160232926867,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.004256105987853772,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.004944877022530884,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0089860482672445,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.02390041133521835,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028139259269565554,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.053760862756657986,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02799388330605226,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        5,
+        8
+      ],
+      "contact_penetration_depth": -0.020728702282636735,
+      "contact_active_pair": [
+        5,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.04821798668553852,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.055963189321941983,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.036970531600292664,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.08913892246291824,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.015727833624306457,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.020728702282636735,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009962279680861125,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.022481816642764833,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.1082948376333514,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02803301368412724,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.014279181441659447,
+      "contact_active_pair": [
+        5,
+        7
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009479367976303242,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004500225245550854,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.03278800026736771,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.12227805285101045,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.014279181441659447,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.035181392612160384,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.06036208156630092,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028065658127026983,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.09729654872837583,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028068140636189006,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.014319221104146233,
+      "contact_active_pair": [
+        5,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.009051288619333466,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499865847570912,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0664307999438661,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.08536937292907922,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.011939764064063649,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0039033609760190306,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.014319221104146233,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02627498440241635,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.006046911999298079,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02807690482857138,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        6,
+        9
+      ],
+      "contact_penetration_depth": -0.008085269596016529,
+      "contact_active_pair": [
+        6,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.27718454936722176,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.6088381585762654,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.52140792768794,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.5204159490750865,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.23139845643562443,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.15386610440942328,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.16826216193108856,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.0073002545606788375,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.008085269596016529,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.0280860898888702,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.03024128129701936,
+      "contact_active_pair": [
+        5,
+        9
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0037838340317604795,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499787732906048,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0025402952932369357,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005780734638312282,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.014261388310142413,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.008580348386170156,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.03024128129701936,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.027980622188776758,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.061574155517722655,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028129086928323856,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.020301939838235587,
+      "contact_active_pair": [
+        4,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.006420901405678408,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499839901861921,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.020301939838235587,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.004516399365198093,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.010222109615570806,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005927749915029617,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.005546663107422911,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02817199928668727,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.05034987452324096,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.028143316802287693,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.025367245655300498,
+      "contact_active_pair": [
+        5,
+        8
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.008769721488759022,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499861914316949,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0013493421194967976,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.12121395606425191,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.006888005605029531,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.025367245655300498,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.0025119072627244523,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02811298194773891,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.11155400641936425,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02802599494558455,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    },
+    {
+      "min_distance": 0.0,
+      "active_pair": [
+        4,
+        6
+      ],
+      "contact_penetration_depth": -0.014157833361618317,
+      "contact_active_pair": [
+        5,
+        7
+      ],
+      "is_collision": true,
+      "pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.001500366842270317,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.004499452060577112,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.0036833430837149633,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.1203849278687173,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.014157833361618317,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.0,
+          "collide_flag": true,
+          "contact_penetration_depth": -0.013265488036658552,
+          "is_collision": true
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.014718704965874746,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.028170120703874556,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.1165279433464453,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02814487083026663,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ]
+    }
+  ],
+  "visualization_png": "artifacts\\sdf_exp\\_smoke_hulls.png"
+}
