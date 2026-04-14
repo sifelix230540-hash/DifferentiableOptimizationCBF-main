@@ -20,6 +20,7 @@ from CBF_experiment.active.pybullet.self_collision.self_collision_cspace_hulls i
     build_monitored_link_pairs,
     classify_self_collision_sample,
     extract_revolute_metadata,
+    extract_self_collision_monitor_metadata,
     monte_carlo_self_collision_hulls,
     sample_revolute_configurations,
 )
@@ -92,11 +93,12 @@ def generate_evaluation_samples(params) -> dict:
         robot = Robot(cfg)
         q_base, dq_base = robot.get_joint_state()
         revolute_ids, _revolute_names, joint_limits, q_indices = extract_revolute_metadata(robot)
-        monitored_pairs = build_monitored_link_pairs(revolute_ids, min_index_gap=int(params.MIN_INDEX_GAP))
+        monitored_link_ids, monitored_link_names = extract_self_collision_monitor_metadata(robot)
+        monitored_pairs = build_monitored_link_pairs(monitored_link_ids, min_index_gap=int(params.MIN_INDEX_GAP))
         from CBF_experiment.active.pybullet.self_collision.self_collision_backend_coal import (
             build_coal_link_models,
         )
-        link_models = build_coal_link_models(robot, revolute_ids)
+        link_models = build_coal_link_models(robot, monitored_link_ids)
         sampled_q = sample_revolute_configurations(
             q_base,
             q_indices,
@@ -141,6 +143,8 @@ def generate_evaluation_samples(params) -> dict:
             "num_collision_samples": int(len(collision_samples)),
             "num_free_samples": int(len(free_samples)),
             "joint_indices": [int(j) for j in revolute_ids],
+            "monitored_link_indices": [int(j) for j in monitored_link_ids],
+            "monitored_link_names": [str(name) for name in monitored_link_names],
         }
         out_path = Path(params.SAMPLE_OUTPUT_JSON)
         out_path.parent.mkdir(parents=True, exist_ok=True)

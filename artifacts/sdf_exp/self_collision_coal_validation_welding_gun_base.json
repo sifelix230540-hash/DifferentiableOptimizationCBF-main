@@ -1,0 +1,838 @@
+{
+  "sample_json": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\artifacts\\sdf_exp\\self_collision_eval_samples.json",
+  "num_samples": 2,
+  "num_collision_samples_checked": 32,
+  "num_free_samples_checked": 32,
+  "agreement_rate": 0.0,
+  "disagreement_count": 2,
+  "mean_abs_distance_delta": 0.039577907134714,
+  "joint_indices": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "joint_names": [
+    "link04",
+    "link05",
+    "link06",
+    "link07",
+    "link08",
+    "link09"
+  ],
+  "monitored_link_indices": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "monitored_link_names": [
+    "link04",
+    "link05",
+    "link06",
+    "link07",
+    "link08",
+    "link09",
+    "welding_gun_base"
+  ],
+  "monitored_pairs": [
+    [
+      4,
+      6
+    ],
+    [
+      4,
+      7
+    ],
+    [
+      4,
+      8
+    ],
+    [
+      4,
+      9
+    ],
+    [
+      4,
+      10
+    ],
+    [
+      5,
+      7
+    ],
+    [
+      5,
+      8
+    ],
+    [
+      5,
+      9
+    ],
+    [
+      5,
+      10
+    ],
+    [
+      6,
+      8
+    ],
+    [
+      6,
+      9
+    ],
+    [
+      6,
+      10
+    ],
+    [
+      7,
+      9
+    ],
+    [
+      7,
+      10
+    ],
+    [
+      8,
+      10
+    ]
+  ],
+  "samples": [
+    {
+      "label": "free",
+      "sample_index": 10,
+      "revolute_q": [
+        2.688302464875151,
+        5.472763309970268,
+        -1.026349634927115,
+        2.032525577850051,
+        4.703217927893065,
+        -4.321228921722833
+      ],
+      "stored_min_distance": 0.015201395400541625,
+      "pybullet_min_distance": -0.00525400973220083,
+      "pybullet_is_collision": true,
+      "pybullet_active_pair": [
+        5,
+        10
+      ],
+      "coal_min_distance": 0.015201395400541625,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        5,
+        10
+      ],
+      "coal_contact_penetration_depth": null,
+      "coal_contact_active_pair": null,
+      "coal_pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.2781913180578757,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.5411367134187516,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.47741031309694815,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.4470688894855335,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            10
+          ],
+          "distance": 0.25181003944132285,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.22826611355776677,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.139394217858397,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.12676329839278383,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            10
+          ],
+          "distance": 0.015201395400541625,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02796382280872172,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.04234185265275081,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            10
+          ],
+          "distance": 0.05761644598587683,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02814998868647908,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            10
+          ],
+          "distance": 0.06732270404032425,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            8,
+            10
+          ],
+          "distance": 0.03600006376015631,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ],
+      "distance_delta_coal_minus_pybullet": 0.020455405132742455,
+      "collision_agree": false
+    },
+    {
+      "label": "free",
+      "sample_index": 29,
+      "revolute_q": [
+        -4.64990725881925,
+        -4.520244271507322,
+        -2.405729724834957,
+        -2.8696517647035615,
+        -0.8640796040972605,
+        4.5828368711264895
+      ],
+      "stored_min_distance": 0.0009793424046817543,
+      "pybullet_min_distance": -0.019240765240627473,
+      "pybullet_is_collision": true,
+      "pybullet_active_pair": [
+        6,
+        10
+      ],
+      "coal_min_distance": 0.0009793424046817543,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        6,
+        10
+      ],
+      "coal_contact_penetration_depth": null,
+      "coal_contact_active_pair": null,
+      "coal_pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.15413085580624275,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.15811685491910363,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.2764491891246971,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.28491246232702555,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            10
+          ],
+          "distance": 0.25351531832971586,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.14030335311643696,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.2487658666015192,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.2427513938297579,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            10
+          ],
+          "distance": 0.11784039993335177,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.027987562428350918,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.046319916797208156,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            10
+          ],
+          "distance": 0.0009793424046817543,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027990959098572812,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            10
+          ],
+          "distance": 0.06784221310022541,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            8,
+            10
+          ],
+          "distance": 0.03599995253451828,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ],
+      "distance_delta_coal_minus_pybullet": 0.020220107645309227,
+      "collision_agree": false
+    }
+  ],
+  "disagreements": [
+    {
+      "label": "free",
+      "sample_index": 10,
+      "revolute_q": [
+        2.688302464875151,
+        5.472763309970268,
+        -1.026349634927115,
+        2.032525577850051,
+        4.703217927893065,
+        -4.321228921722833
+      ],
+      "stored_min_distance": 0.015201395400541625,
+      "pybullet_min_distance": -0.00525400973220083,
+      "pybullet_is_collision": true,
+      "pybullet_active_pair": [
+        5,
+        10
+      ],
+      "coal_min_distance": 0.015201395400541625,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        5,
+        10
+      ],
+      "coal_contact_penetration_depth": null,
+      "coal_contact_active_pair": null,
+      "coal_pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.2781913180578757,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.5411367134187516,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.47741031309694815,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.4470688894855335,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            10
+          ],
+          "distance": 0.25181003944132285,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.22826611355776677,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.139394217858397,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.12676329839278383,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            10
+          ],
+          "distance": 0.015201395400541625,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.02796382280872172,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.04234185265275081,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            10
+          ],
+          "distance": 0.05761644598587683,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.02814998868647908,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            10
+          ],
+          "distance": 0.06732270404032425,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            8,
+            10
+          ],
+          "distance": 0.03600006376015631,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ],
+      "distance_delta_coal_minus_pybullet": 0.020455405132742455,
+      "collision_agree": false
+    },
+    {
+      "label": "free",
+      "sample_index": 29,
+      "revolute_q": [
+        -4.64990725881925,
+        -4.520244271507322,
+        -2.405729724834957,
+        -2.8696517647035615,
+        -0.8640796040972605,
+        4.5828368711264895
+      ],
+      "stored_min_distance": 0.0009793424046817543,
+      "pybullet_min_distance": -0.019240765240627473,
+      "pybullet_is_collision": true,
+      "pybullet_active_pair": [
+        6,
+        10
+      ],
+      "coal_min_distance": 0.0009793424046817543,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        6,
+        10
+      ],
+      "coal_contact_penetration_depth": null,
+      "coal_contact_active_pair": null,
+      "coal_pair_reports": [
+        {
+          "pair": [
+            4,
+            6
+          ],
+          "distance": 0.15413085580624275,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            7
+          ],
+          "distance": 0.15811685491910363,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            8
+          ],
+          "distance": 0.2764491891246971,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            9
+          ],
+          "distance": 0.28491246232702555,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            4,
+            10
+          ],
+          "distance": 0.25351531832971586,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            7
+          ],
+          "distance": 0.14030335311643696,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            8
+          ],
+          "distance": 0.2487658666015192,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            9
+          ],
+          "distance": 0.2427513938297579,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            5,
+            10
+          ],
+          "distance": 0.11784039993335177,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            8
+          ],
+          "distance": 0.027987562428350918,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            9
+          ],
+          "distance": 0.046319916797208156,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            6,
+            10
+          ],
+          "distance": 0.0009793424046817543,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            9
+          ],
+          "distance": 0.027990959098572812,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            7,
+            10
+          ],
+          "distance": 0.06784221310022541,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        },
+        {
+          "pair": [
+            8,
+            10
+          ],
+          "distance": 0.03599995253451828,
+          "collide_flag": false,
+          "contact_penetration_depth": null,
+          "is_collision": false
+        }
+      ],
+      "distance_delta_coal_minus_pybullet": 0.020220107645309227,
+      "collision_agree": false
+    }
+  ],
+  "welding_gun_base_index": 10,
+  "welding_gun_base_pair_counts": {
+    "(5, 10)": 1,
+    "(6, 10)": 1
+  }
+}

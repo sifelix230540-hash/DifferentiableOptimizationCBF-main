@@ -142,8 +142,10 @@ def visualize_comparison_gui(params=ComparisonVisualizationParameters) -> dict:
     q_base, dq_base = robot.get_joint_state()
     revolute_ids = [int(j) for j in report.get("joint_indices", [])]
     joint_names = [str(name) for name in report.get("joint_names", [])]
+    monitored_link_indices = [int(j) for j in report.get("monitored_link_indices", revolute_ids)]
+    monitored_link_names = [str(name) for name in report.get("monitored_link_names", joint_names)]
     q_indices = list(range(robot.n_pris, robot.n_pris + len(revolute_ids)))
-    joint_names_by_id = {int(j): str(name) for j, name in zip(revolute_ids, joint_names)}
+    joint_names_by_id = {int(j): str(name) for j, name in zip(monitored_link_indices, monitored_link_names)}
 
     status_ids = [-1] * 12
     current_idx = 0
@@ -154,7 +156,7 @@ def visualize_comparison_gui(params=ComparisonVisualizationParameters) -> dict:
         item = inspected[index]
         q_full = _compose_full_q(q_base, q_indices, item["revolute_q"])
         robot.set_joint_state(q_full, dq=np.zeros_like(q_full))
-        _highlight_links(robot, revolute_ids, item.get("pybullet_active_pair"), item.get("coal_active_pair"))
+        _highlight_links(robot, monitored_link_indices, item.get("pybullet_active_pair"), item.get("coal_active_pair"))
         camera_target = _pick_camera_target(robot)
         p.resetDebugVisualizerCamera(
             cameraDistance=float(params.CAMERA_DISTANCE),

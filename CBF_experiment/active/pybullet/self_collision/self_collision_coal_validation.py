@@ -20,6 +20,7 @@ from CBF_experiment.active.pybullet.self_collision.self_collision_cspace_hulls i
     build_monitored_link_pairs,
     classify_self_collision_sample,
     extract_revolute_metadata,
+    extract_self_collision_monitor_metadata,
 )
 
 
@@ -222,8 +223,9 @@ def run_coal_validation(params=CoalValidationParameters) -> dict:
         robot = Robot(cfg)
         q_base, dq_base = robot.get_joint_state()
         revolute_ids, revolute_names, _joint_limits, q_indices = extract_revolute_metadata(robot)
-        monitored_pairs = build_monitored_link_pairs(revolute_ids, min_index_gap=int(params.MIN_INDEX_GAP))
-        link_models = build_coal_link_models(robot, revolute_ids)
+        monitored_link_ids, monitored_link_names = extract_self_collision_monitor_metadata(robot)
+        monitored_pairs = build_monitored_link_pairs(monitored_link_ids, min_index_gap=int(params.MIN_INDEX_GAP))
+        link_models = build_coal_link_models(robot, monitored_link_ids)
 
         sample_reports = []
         for sample in selected_samples:
@@ -276,6 +278,8 @@ def run_coal_validation(params=CoalValidationParameters) -> dict:
         "mean_abs_distance_delta": float(np.mean([abs(item["distance_delta_coal_minus_pybullet"]) for item in sample_reports])),
         "joint_indices": [int(j) for j in revolute_ids],
         "joint_names": [str(name) for name in revolute_names],
+        "monitored_link_indices": [int(j) for j in monitored_link_ids],
+        "monitored_link_names": [str(name) for name in monitored_link_names],
         "monitored_pairs": [[int(a), int(b)] for a, b in monitored_pairs],
         "samples": sample_reports,
         "disagreements": disagreement_reports,

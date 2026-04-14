@@ -1,6 +1,7 @@
 # Self Collision 使用说明
 
 本目录下的自碰撞实验现在按职责拆成 4 组。
+现在扩展为 5 组。
 
 ## 推荐结构
 
@@ -25,6 +26,10 @@
 ### `boundary_learning/`
 - `boundary_learner.py`
 - 作用：用 `coal` 数据集训练隐式边界 `h(q)`，再提取切平面作为显式约束。
+
+### `safe_cover/`
+- `iris_safe_cover.py`
+- 作用：借鉴 IRIS 思路，在 6R 安全集采样上迭代生成“最大内接球 + 切平面”形式的安全多面体覆盖。
 
 ## 当前兼容策略
 
@@ -119,6 +124,17 @@ from CBF_experiment.active.pybullet.self_collision.boundary_learning.boundary_le
 )
 ```
 
+### 4. IRIS 风格安全覆盖
+
+```python
+from CBF_experiment.active.pybullet.self_collision.safe_cover import (
+    IrisSafeCoverConfig,
+    run_iris_safe_cover,
+)
+
+cover = run_iris_safe_cover(IrisSafeCoverConfig())
+```
+
 ## 文件关系
 
 ### 核心底座
@@ -137,10 +153,14 @@ from CBF_experiment.active.pybullet.self_collision.boundary_learning.boundary_le
 ### 学习实验
 - `boundary_learning/boundary_learner.py`
 
+### 安全覆盖
+- `safe_cover/iris_safe_cover.py`
+
 ## 建议
 
 - 如果你的目标是“经典几何建模”，优先看 `cspace_hulls/`
 - 如果你的目标是“检查 `coal` 和旧方法差异”，优先看 `validation/`
 - 如果你的目标是“得到可微边界函数和切平面约束”，优先看 `boundary_learning/`
+- 如果你的目标是“直接得到一组可用于规划筛选的安全多面体覆盖”，优先看 `safe_cover/`
 - 新实验不要再直接往顶层旧文件里继续堆，优先放到对应分组目录下
 

@@ -29,6 +29,7 @@ from CBF_experiment.active.pybullet.main_pipe_line.simulation_module import (  #
 from CBF_experiment.active.pybullet.self_collision.self_collision_cspace_hulls import (  # noqa: E402
     build_monitored_link_pairs,
     extract_revolute_metadata,
+    extract_self_collision_monitor_metadata,
     sample_revolute_configurations,
 )
 from CBF_experiment.active.pybullet.self_collision.self_collision_backend_coal import (  # noqa: E402
@@ -113,8 +114,9 @@ def generate_dataset(cfg: DatasetConfig | None = None) -> Path:
         robot = Robot(load_config())
         q_base, _ = robot.get_joint_state()
         rev_ids, _, joint_limits, q_indices = extract_revolute_metadata(robot)
-        pairs = build_monitored_link_pairs(rev_ids, min_index_gap=cfg.min_index_gap)
-        link_models = build_coal_link_models(robot, rev_ids)
+        monitored_link_ids, _monitored_link_names = extract_self_collision_monitor_metadata(robot)
+        pairs = build_monitored_link_pairs(monitored_link_ids, min_index_gap=cfg.min_index_gap)
+        link_models = build_coal_link_models(robot, monitored_link_ids)
         sampled = sample_revolute_configurations(
             q_base, q_indices, joint_limits,
             num_samples=cfg.num_samples, rng=rng,
@@ -334,8 +336,13 @@ def visualize_boundary_gui(cfg: VisConfig | None = None) -> None:
     robot = Robot(robot_cfg)
     q_base, dq_base = robot.get_joint_state()
     rev_ids, rev_names, _, q_indices = extract_revolute_metadata(robot)
-    pairs = build_monitored_link_pairs(rev_ids, min_index_gap=2)
-    link_models = build_coal_link_models(robot, rev_ids)
+    monitored_link_ids, monitored_link_names = extract_self_collision_monitor_metadata(robot)
+    pairs = build_monitored_link_pairs(monitored_link_ids, min_index_gap=2)
+    link_models = build_coal_link_models(robot, monitored_link_ids)
+    monitored_names_by_id = {
+        int(link_id): str(name)
+        for link_id, name in zip(monitored_link_ids, monitored_link_names)
+    }
 
     status_ids = [-1] * 8
     idx = 0
@@ -390,7 +397,7 @@ def visualize_boundary_gui(cfg: VisConfig | None = None) -> None:
                 replaceItemUniqueId=status_ids[ti],
             )
 
-        for lid in rev_ids:
+        for lid in monitored_link_ids:
             color = [0.82, 0.82, 0.82, 1.0]
             ap = m.get("active_pair") or []
             if int(lid) in [int(x) for x in ap]:

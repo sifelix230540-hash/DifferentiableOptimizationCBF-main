@@ -37,6 +37,32 @@ def extract_revolute_metadata(robot) -> tuple[list[int], list[str], list[tuple[f
     return revolute_ids, revolute_names, joint_limits, q_indices
 
 
+def extract_self_collision_monitor_metadata(
+    robot,
+    *,
+    include_welding_gun_base: bool = True,
+    include_third_axis_chain: bool = True,
+) -> tuple[list[int], list[str]]:
+    monitored_ids: list[int] = []
+    if include_third_axis_chain:
+        prismatic_joints = [int(j) for j in getattr(robot, "prismatic_joints", [])]
+        if len(prismatic_joints) >= 3:
+            monitored_ids.append(int(prismatic_joints[2]))
+        robobase = int(getattr(robot, "robobase_link_index", -1))
+        if robobase >= 0 and robobase not in monitored_ids:
+            monitored_ids.append(robobase)
+    monitored_ids.extend(int(j) for j in getattr(robot, "revolute_joints", []))
+    if include_welding_gun_base:
+        welding_gun_base = int(getattr(robot, "welding_gun_base_link_index", -1))
+        if welding_gun_base >= 0 and welding_gun_base not in monitored_ids:
+            monitored_ids.append(welding_gun_base)
+    monitored_names = [
+        str(getattr(robot, "link_name_by_index", {}).get(link_id, f"link_{link_id}"))
+        for link_id in monitored_ids
+    ]
+    return monitored_ids, monitored_names
+
+
 def normalize_joint_samples(samples, joint_limits):
     pts = np.asarray(samples, dtype=float).reshape(-1, len(joint_limits))
     lower = np.asarray([float(lo) for lo, _hi in joint_limits], dtype=float)
@@ -447,11 +473,12 @@ def monte_carlo_self_collision_hulls(
         robot = Robot(cfg)
         q_base, dq_base = robot.get_joint_state()
         revolute_ids, revolute_names, joint_limits, q_indices = extract_revolute_metadata(robot)
-        monitored_pairs = build_monitored_link_pairs(revolute_ids, min_index_gap=int(min_index_gap))
+        monitored_link_ids, monitored_link_names = extract_self_collision_monitor_metadata(robot)
+        monitored_pairs = build_monitored_link_pairs(monitored_link_ids, min_index_gap=int(min_index_gap))
         from CBF_experiment.active.pybullet.self_collision.self_collision_backend_coal import (
             build_coal_link_models,
         )
-        link_models = build_coal_link_models(robot, revolute_ids)
+        link_models = build_coal_link_models(robot, monitored_link_ids)
         sampled_q = sample_revolute_configurations(
             q_base,
             q_indices,
@@ -499,6 +526,8 @@ def monte_carlo_self_collision_hulls(
                 "dimension": int(len(joint_limits)),
                 "joint_indices": [int(j) for j in revolute_ids],
                 "joint_names": revolute_names,
+                "monitored_link_indices": [int(j) for j in monitored_link_ids],
+                "monitored_link_names": [str(name) for name in monitored_link_names],
                 "joint_limits": [[float(lo), float(hi)] for lo, hi in joint_limits],
                 "num_samples": int(num_samples),
                 "num_collision_samples": 0,
@@ -517,6 +546,8 @@ def monte_carlo_self_collision_hulls(
                 **hull_payload,
                 "joint_indices": [int(j) for j in revolute_ids],
                 "joint_names": revolute_names,
+                "monitored_link_indices": [int(j) for j in monitored_link_ids],
+                "monitored_link_names": [str(name) for name in monitored_link_names],
                 "joint_limits": [[float(lo), float(hi)] for lo, hi in joint_limits],
                 "num_samples": int(num_samples),
                 "num_collision_samples_total": int(sum(1 for item in sample_metrics if item["is_collision"])),

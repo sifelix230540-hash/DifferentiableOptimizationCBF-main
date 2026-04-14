@@ -19,6 +19,7 @@ from CBF_experiment.active.pybullet.self_collision.self_collision_cspace_hulls i
     build_monitored_link_pairs,
     classify_self_collision_sample,
     extract_revolute_metadata,
+    extract_self_collision_monitor_metadata,
 )
 from CBF_experiment.active.pybullet.main_pipe_line.simulation_module import SimulationScene, Robot, load_config, _resolve  # noqa: E402
 
@@ -105,11 +106,10 @@ def _pick_camera_target(robot) -> list[float]:
     return target.tolist()
 
 
-def _pair_to_text(active_pair, revolute_ids: list[int], revolute_names: list[str]) -> str:
+def _pair_to_text(active_pair, link_names_by_id: dict[int, str]) -> str:
     if active_pair is None:
         return "none"
-    mapping = {int(joint_id): str(name) for joint_id, name in zip(revolute_ids, revolute_names)}
-    names = [mapping.get(int(link_id), f"link_{int(link_id)}") for link_id in active_pair]
+    names = [link_names_by_id.get(int(link_id), f"link_{int(link_id)}") for link_id in active_pair]
     return f"{list(active_pair)} ({names[0]} <-> {names[1]})"
 
 
@@ -133,11 +133,16 @@ def visualize_selected_samples_gui(params=VisualizationParameters) -> dict:
     robot = Robot(cfg)
     q_base, dq_base = robot.get_joint_state()
     revolute_ids, revolute_names, _joint_limits, q_indices = extract_revolute_metadata(robot)
-    monitored_pairs = build_monitored_link_pairs(revolute_ids, min_index_gap=int(params.MIN_INDEX_GAP))
+    monitored_link_ids, monitored_link_names = extract_self_collision_monitor_metadata(robot)
+    monitored_pairs = build_monitored_link_pairs(monitored_link_ids, min_index_gap=int(params.MIN_INDEX_GAP))
     from CBF_experiment.active.pybullet.self_collision.self_collision_backend_coal import (
         build_coal_link_models,
     )
-    link_models = build_coal_link_models(robot, revolute_ids)
+    link_models = build_coal_link_models(robot, monitored_link_ids)
+    link_names_by_id = {
+        int(link_id): str(name)
+        for link_id, name in zip(monitored_link_ids, monitored_link_names)
+    }
 
     inspected: list[dict] = []
     for item in selected:
@@ -174,7 +179,7 @@ def visualize_selected_samples_gui(params=VisualizationParameters) -> dict:
         )
         base_pos, _base_quat = robot.get_robobase_pose()
         anchor = np.asarray(base_pos, dtype=float) + np.array([0.00, -0.35, 0.85], dtype=float)
-        pair_text = _pair_to_text(item["active_pair"], revolute_ids, revolute_names)
+        pair_text = _pair_to_text(item["active_pair"], link_names_by_id)
         lines = [
             f"[{index + 1}/{len(inspected)}] label={item['label']} sample_index={item['sample_index']}",
             f"stored_min_distance={item['stored_min_distance']:+.6f}  recomputed_min_distance={item['recomputed_min_distance']:+.6f}",
@@ -204,6 +209,8 @@ def visualize_selected_samples_gui(params=VisualizationParameters) -> dict:
         "sample_json": str(Path(params.SAMPLE_JSON)),
         "joint_indices": [int(j) for j in revolute_ids],
         "joint_names": [str(name) for name in revolute_names],
+        "monitored_link_indices": [int(j) for j in monitored_link_ids],
+        "monitored_link_names": [str(name) for name in monitored_link_names],
         "selected_samples": inspected,
     }
     output_json = Path(params.OUTPUT_JSON)

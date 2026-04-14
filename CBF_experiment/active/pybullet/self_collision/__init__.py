@@ -5,6 +5,7 @@ Recommended new layout:
 - `cspace_hulls/`
 - `validation/`
 - `boundary_learning/`
+- `safe_cover/`
 
 Legacy top-level scripts are currently kept for compatibility.
 """
