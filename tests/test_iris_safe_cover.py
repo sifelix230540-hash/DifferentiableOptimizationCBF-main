@@ -66,6 +66,33 @@ class IrisSafeCoverTests(unittest.TestCase):
         self.assertEqual(controls.shape, (4, 3))
         self.assertTrue(np.all(controls @ A.T <= b.reshape(1, -1) + 1e-9))
 
+    def test_build_random_safe_curve_supports_ellipsoid_region(self):
+        module = load_module(MODULE_PATH, "iris_safe_cover_curve_ellipsoid")
+        region = {
+            "center_normalized": [0.5, 0.5],
+            "C_normalized": [
+                [0.12, 0.0],
+                [0.0, 0.08],
+            ],
+            "A_normalized": [
+                [1.0, 0.0],
+                [-1.0, 0.0],
+                [0.0, 1.0],
+                [0.0, -1.0],
+            ],
+            "b_normalized": [1.0, 0.0, 1.0, 0.0],
+        }
+
+        curve = module.build_random_safe_curve(region, rng=np.random.default_rng(2), num_points=50)
+        pts = np.asarray(curve["curve_normalized"], dtype=float)
+        controls = np.asarray(curve["control_points_normalized"], dtype=float)
+        A = np.asarray(region["A_normalized"], dtype=float)
+        b = np.asarray(region["b_normalized"], dtype=float)
+
+        self.assertEqual(pts.shape, (50, 2))
+        self.assertTrue(np.all(controls @ A.T <= b.reshape(1, -1) + 1e-9))
+        self.assertTrue(np.all(pts @ A.T <= b.reshape(1, -1) + 1e-9))
+
 
 if __name__ == "__main__":
     unittest.main()
