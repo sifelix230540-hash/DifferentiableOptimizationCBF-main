@@ -1,3 +1,4 @@
+"""关节盒内均匀拒绝采样无碰撞构型，支持 JSON 缓存。"""
 from __future__ import annotations
 
 import json
@@ -5,9 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import SamplingConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot_model import sample_joint_box
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import FreeSample, IrisRegion, RobotModelMetadata
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import SamplingConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.robot_model import sample_joint_box
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import FreeSample, IrisRegion, RobotModelMetadata
 
 
 def _point_in_polytope(point: np.ndarray, A: np.ndarray, b: np.ndarray, *, tol: float = 1e-9) -> bool:
@@ -24,7 +25,7 @@ def _covered_by_regions(q: np.ndarray, regions: list[IrisRegion] | tuple[IrisReg
 
 
 def sample_free_configurations(oracle, cfg: SamplingConfig, *, regions=None) -> list[FreeSample]:
-    from CBF_experiment.active.pybullet.self_collision.vcc_iris.progress import ProgressBar
+    from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.progress import ProgressBar
     rng = np.random.default_rng(int(cfg.RNG_SEED))
     metadata: RobotModelMetadata = oracle.metadata
     target = int(cfg.NUM_SEED_SAMPLES)

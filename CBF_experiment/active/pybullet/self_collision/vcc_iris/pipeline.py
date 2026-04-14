@@ -1,21 +1,22 @@
+"""VCC + IRIS-ZO 完整流水线：采样→可见性→团覆盖→椭球→区域生长→覆盖率。"""
 from __future__ import annotations
 
 import time
 
 import numpy as np
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.clique_cover import greedy_clique_cover
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.coal_oracle import CoalSelfCollisionOracle
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import ExperimentConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.coverage import estimate_region_coverage
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.ellipsoids import summarize_cliques_with_ellipsoids
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.gui import evaluate_curve, playback_curve_gui, sample_curve_in_region
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.iris_zo import run_iris_zo
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.progress import stage_print
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.reporting import write_experiment_report
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.sampling import load_free_samples, sample_free_configurations, save_free_samples
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import ExperimentReport
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.visibility import build_visibility_graph
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.clique_cover import greedy_clique_cover
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.coal_oracle import CoalSelfCollisionOracle
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import ExperimentConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.coverage import estimate_region_coverage
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.ellipsoids import summarize_cliques_with_ellipsoids
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.io.gui import evaluate_curve, playback_curve_gui, sample_curve_in_region
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.iris_zo import run_iris_zo
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.progress import stage_print
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.io.reporting import write_experiment_report
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.sampling import load_free_samples, sample_free_configurations, save_free_samples
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import ExperimentReport
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.visibility import build_visibility_graph
 
 
 def run_vcc_iris_pipeline(cfg: ExperimentConfig = ExperimentConfig()) -> ExperimentReport:

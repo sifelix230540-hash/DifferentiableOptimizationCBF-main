@@ -1,7 +1,8 @@
+"""可见性图上的贪心极大团覆盖，生成 IRIS-ZO 种子团。"""
 from __future__ import annotations
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import CliqueCoverConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import Clique, VisibilityGraph
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import CliqueCoverConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import Clique, VisibilityGraph
 
 
 def _grow_maximal_clique(seed: int, remaining: set[int], adjacency: tuple[frozenset[int], ...]) -> tuple[int, ...]:

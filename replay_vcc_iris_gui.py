@@ -1,10 +1,10 @@
 """独立 GUI 重播：从已有 experiment JSON 直接播放轨迹，无需重新规划。
 
 用法:
-    python _replay_gui.py                           # 使用默认路径
-    python _replay_gui.py path/to/experiment.json   # 指定文件
-    python _replay_gui.py --speed 0.1               # 调整每帧间隔(秒)
-    python _replay_gui.py --hold 10                 # 播放结束后保持窗口(秒)
+    python replay_vcc_iris_gui.py                           # 使用默认路径
+    python replay_vcc_iris_gui.py path/to/experiment.json   # 指定文件
+    python replay_vcc_iris_gui.py --speed 0.1               # 调整每帧间隔(秒)
+    python replay_vcc_iris_gui.py --hold 10                 # 播放结束后保持窗口(秒)
 """
 import argparse
 import sys
@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--hold", type=float, default=5.0, help="播放结束后保持窗口秒数 (默认 5.0)")
     args = parser.parse_args()
 
-    from CBF_experiment.active.pybullet.self_collision.vcc_iris.gui import replay_from_json
+    from CBF_experiment.active.pybullet.self_collision.vcc_iris.io.gui import replay_from_json
 
     replay_from_json(args.json_path, sleep_dt=args.speed, hold_seconds=args.hold)
 

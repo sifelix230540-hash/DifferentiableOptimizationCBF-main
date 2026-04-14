@@ -8,9 +8,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.clique_cover import greedy_clique_cover
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import CliqueCoverConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import VisibilityGraph
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.clique_cover import greedy_clique_cover
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import CliqueCoverConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import VisibilityGraph
 
 
 class CliqueCoverTests(unittest.TestCase):

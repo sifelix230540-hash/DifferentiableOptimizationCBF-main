@@ -1,3 +1,4 @@
+"""IRIS-ZO 区域生长：统计检验 + 切面放置 + MVIE 迭代膨胀凸多面体。"""
 from __future__ import annotations
 
 import math
@@ -5,18 +6,18 @@ import math
 import numpy as np
 
 from CBF_experiment.active.pybullet.self_collision.safe_cover.iris_exact import maximum_volume_inscribed_ellipsoid
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import IrisZoConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.polytope_sampling import (
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import IrisZoConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.polytope_sampling import (
     is_inside_polytope,
     sample_polytope_hit_and_run,
 )
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.statistical_test import (
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.statistical_test import (
     required_trials,
     unadaptive_collision_test,
     union_bound_delta,
 )
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.progress import ProgressBar, stage_print
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import CliqueEllipsoid, IrisRegion
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.progress import ProgressBar, stage_print
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import CliqueEllipsoid, IrisRegion
 
 
 def _normalized_rows(A: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

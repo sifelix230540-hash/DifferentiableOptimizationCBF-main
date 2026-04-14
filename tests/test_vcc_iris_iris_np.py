@@ -8,9 +8,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import IrisZoConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.iris_zo import run_iris_zo
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import CliqueEllipsoid, RobotModelMetadata
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import IrisZoConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.iris_zo import run_iris_zo
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import CliqueEllipsoid, RobotModelMetadata
 
 
 class FakeIrisOracle:

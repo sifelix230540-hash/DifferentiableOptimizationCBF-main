@@ -1,3 +1,4 @@
+"""Chernoff 界 / 并界形式的非自适应碰撞统计检验。"""
 from __future__ import annotations
 
 import math

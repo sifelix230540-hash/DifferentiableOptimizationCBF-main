@@ -1,3 +1,4 @@
+"""基于 coal (hpp-fcl) 的自碰撞预言机：距离查询、线段碰撞检测、二分边界。"""
 from __future__ import annotations
 
 import sys
@@ -6,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pybullet as p
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+REPO_ROOT = Path(__file__).resolve().parents[6]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -16,9 +17,9 @@ from CBF_experiment.active.pybullet.self_collision.self_collision_backend_coal i
     compute_pairwise_self_collision_distance,
     is_any_pair_collision_fast,
 )
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import RobotQueryConfig  # noqa: E402
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot_model import compose_full_q, load_robot_metadata  # noqa: E402
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import RobotModelMetadata  # noqa: E402
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import RobotQueryConfig  # noqa: E402
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.robot_model import compose_full_q, load_robot_metadata  # noqa: E402
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import RobotModelMetadata  # noqa: E402
 
 
 class CoalSelfCollisionOracle:

@@ -8,11 +8,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.polytope_sampling import (
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.polytope_sampling import (
     is_inside_polytope,
     sample_polytope_hit_and_run,
 )
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.statistical_test import (
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.statistical_test import (
     required_trials,
     unadaptive_collision_test,
     union_bound_delta,

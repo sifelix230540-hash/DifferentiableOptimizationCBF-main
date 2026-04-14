@@ -1,3 +1,4 @@
+"""流水线各阶段共用的数据结构定义（dataclass）。"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

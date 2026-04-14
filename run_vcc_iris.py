@@ -1,9 +1,9 @@
-"""Full VCC + IRIS-ZO benchmark with GUI visualization."""
+"""VCC + IRIS-ZO 完整流水线运行入口（含 GUI 可视化）。"""
 import time
 
 
 def main():
-    from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import (
+    from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import (
         ExperimentConfig,
         SamplingConfig,
         VisibilityConfig,
@@ -11,7 +11,7 @@ def main():
         IrisZoConfig,
     )
     from CBF_experiment.active.pybullet.self_collision.vcc_iris.pipeline import run_vcc_iris_pipeline
-    from CBF_experiment.active.pybullet.self_collision.vcc_iris.statistical_test import (
+    from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.statistical_test import (
         required_trials,
         union_bound_delta,
     )
@@ -19,7 +19,7 @@ def main():
     cfg = ExperimentConfig(
         SAMPLING=SamplingConfig(
             NUM_SEED_SAMPLES=300,
-            SAMPLE_CACHE_PATH="__benchmark_scratch_samples.json",
+            SAMPLE_CACHE_PATH="artifacts/sdf_exp/vcc_iris_free_samples.json",
         ),
         VISIBILITY=VisibilityConfig(
             MAX_CANDIDATE_PAIRS=None,

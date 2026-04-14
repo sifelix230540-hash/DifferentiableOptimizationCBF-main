@@ -1,3 +1,4 @@
+"""终端进度条与阶段日志输出工具。"""
 from __future__ import annotations
 
 import sys

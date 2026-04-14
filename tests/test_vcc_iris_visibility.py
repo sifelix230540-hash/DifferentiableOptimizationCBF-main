@@ -8,9 +8,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import VisibilityConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import FreeSample
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.visibility import build_visibility_graph
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import VisibilityConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import FreeSample
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.visibility import build_visibility_graph
 
 
 class FakeVisibilityOracle:

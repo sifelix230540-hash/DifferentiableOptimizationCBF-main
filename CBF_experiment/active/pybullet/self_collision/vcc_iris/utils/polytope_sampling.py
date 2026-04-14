@@ -1,3 +1,4 @@
+"""凸多面体内的 hit-and-run 随机游走采样。"""
 from __future__ import annotations
 
 import numpy as np

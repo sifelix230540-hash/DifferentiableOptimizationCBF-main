@@ -1,3 +1,4 @@
+"""PyBullet 机器人模型加载与关节空间辅助函数。"""
 from __future__ import annotations
 
 import sys
@@ -6,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pybullet as p
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+REPO_ROOT = Path(__file__).resolve().parents[6]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -16,8 +17,8 @@ from CBF_experiment.active.pybullet.self_collision.self_collision_cspace_hulls i
     extract_revolute_metadata,
     extract_self_collision_monitor_metadata,
 )
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import RobotQueryConfig  # noqa: E402
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import RobotModelMetadata  # noqa: E402
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import RobotQueryConfig  # noqa: E402
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import RobotModelMetadata  # noqa: E402
 
 
 def load_robot_metadata(robot_cfg: RobotQueryConfig) -> tuple[Robot, RobotModelMetadata, bool]:

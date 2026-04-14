@@ -1,8 +1,9 @@
+"""为种子团拟合最小体积外包椭球 (MVEE)，作为 IRIS-ZO 初始椭球。"""
 from __future__ import annotations
 
 import numpy as np
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import Clique, CliqueEllipsoid, FreeSample
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import Clique, CliqueEllipsoid, FreeSample
 
 
 def _mvee(points: np.ndarray, solver_preference: tuple[str, ...] = ("MOSEK", "CLARABEL", "SCS")) -> tuple[np.ndarray, np.ndarray]:

@@ -1,10 +1,11 @@
+"""采样估计多面体区域并集对 C-free 的覆盖率及置信半径。"""
 from __future__ import annotations
 
 import math
 
 import numpy as np
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import CoverageEstimate, FreeSample, IrisRegion
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import CoverageEstimate, FreeSample, IrisRegion
 
 
 def points_in_polytope(points: np.ndarray, A: np.ndarray, b: np.ndarray, *, tol: float = 1e-9) -> np.ndarray:

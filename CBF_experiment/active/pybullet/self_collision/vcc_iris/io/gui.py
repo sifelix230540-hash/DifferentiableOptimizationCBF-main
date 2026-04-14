@@ -1,3 +1,4 @@
+"""区域内 Bézier 曲线采样、碰撞评估与 PyBullet GUI 轨迹回放。"""
 from __future__ import annotations
 
 import json
@@ -8,7 +9,7 @@ import numpy as np
 import pybullet as p
 
 from CBF_experiment.active.pybullet.main_pipe_line.simulation_module import SimulationScene, load_config
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot_model import compose_full_q, load_robot_metadata
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.robot_model import compose_full_q, load_robot_metadata
 
 
 def sample_curve_in_region(region, *, num_points: int, rng: np.random.Generator) -> np.ndarray:
@@ -113,7 +114,7 @@ def replay_from_json(
     robot_cfg=None,
 ):
     """从已有的 experiment JSON 文件直接启动 GUI 重播，无需重新规划。"""
-    from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import RobotQueryConfig
+    from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import RobotQueryConfig
 
     path = Path(experiment_json)
     if not path.exists():

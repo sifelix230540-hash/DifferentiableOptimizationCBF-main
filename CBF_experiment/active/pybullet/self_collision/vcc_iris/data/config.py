@@ -1,3 +1,4 @@
+"""实验参数集中配置：采样、可见性、团覆盖、IRIS-ZO、报告路径。"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -62,11 +63,6 @@ class IrisZoConfig:
     MAX_REGIONS: int = 12
     STEPBACK_MARGIN: float = 0.01
     RNG_SEED: int = 23
-
-
-@dataclass(frozen=True)
-class IrisNpConfig(IrisZoConfig):
-    """Compatibility alias for older imports; prefer IrisZoConfig."""
 
 
 @dataclass(frozen=True)

@@ -1,3 +1,4 @@
+"""在 free 样本上构造可见性图（支持多进程并行）。"""
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -6,8 +7,8 @@ from itertools import combinations
 
 import numpy as np
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import VisibilityConfig
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import FreeSample, VisibilityGraph
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import VisibilityConfig
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import FreeSample, VisibilityGraph
 
 
 def _choose_candidate_pairs(num_vertices: int, cfg: VisibilityConfig) -> list[tuple[int, int]]:
@@ -32,8 +33,8 @@ _worker_oracle = None
 
 def _worker_init(config_dict):
     global _worker_oracle
-    from CBF_experiment.active.pybullet.self_collision.vcc_iris.coal_oracle import CoalSelfCollisionOracle
-    from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import RobotQueryConfig
+    from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.coal_oracle import CoalSelfCollisionOracle
+    from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import RobotQueryConfig
     _worker_oracle = CoalSelfCollisionOracle(RobotQueryConfig(**config_dict))
 
 
@@ -91,7 +92,7 @@ def build_visibility_graph(
         and hasattr(oracle.config, "__dataclass_fields__")
     )
     if can_parallel:
-        from CBF_experiment.active.pybullet.self_collision.vcc_iris.progress import stage_print
+        from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.progress import stage_print
         stage_print(f"visibility: {len(candidate_pairs)} edges, {parallel_workers} workers (parallel)")
         config_dict = {
             field: getattr(oracle.config, field)
@@ -99,7 +100,7 @@ def build_visibility_graph(
         }
         visible_edges = _parallel_visibility(vertices, candidate_pairs, cfg, config_dict, parallel_workers)
     else:
-        from CBF_experiment.active.pybullet.self_collision.vcc_iris.progress import ProgressBar
+        from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.progress import ProgressBar
         pb = ProgressBar(len(candidate_pairs), prefix="[visibility]")
         visible_edges = []
         for idx, (i, j) in enumerate(candidate_pairs):

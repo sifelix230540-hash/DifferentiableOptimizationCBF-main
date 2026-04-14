@@ -8,8 +8,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.ellipsoids import summarize_cliques_with_ellipsoids
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import Clique, FreeSample
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.ellipsoids import summarize_cliques_with_ellipsoids
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import Clique, FreeSample
 
 
 class EllipsoidTests(unittest.TestCase):

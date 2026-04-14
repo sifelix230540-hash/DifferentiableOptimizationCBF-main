@@ -1,3 +1,4 @@
+"""将实验结果序列化为 cover / experiment 两份 JSON 文件。"""
 from __future__ import annotations
 
 import json
@@ -5,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import ExperimentReport
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import ExperimentReport
 
 
 def _region_payload(region) -> dict:

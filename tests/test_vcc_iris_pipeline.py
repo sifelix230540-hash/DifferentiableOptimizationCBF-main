@@ -10,7 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import (
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.config import (
     CliqueCoverConfig,
     ExperimentConfig,
     IrisZoConfig,
@@ -20,7 +20,7 @@ from CBF_experiment.active.pybullet.self_collision.vcc_iris.config import (
     VisibilityConfig,
 )
 from CBF_experiment.active.pybullet.self_collision.vcc_iris.pipeline import run_vcc_iris_pipeline
-from CBF_experiment.active.pybullet.self_collision.vcc_iris.types import RobotModelMetadata
+from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import RobotModelMetadata
 
 
 class FakePipelineOracle:
