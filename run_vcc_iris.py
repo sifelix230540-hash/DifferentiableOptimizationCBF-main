@@ -18,26 +18,26 @@ def main():
         SAMPLING=SamplingConfig(
             NUM_SAMPLES_PER_ROUND=1500,          # 服务器: 1500
             BATCH_SIZE=1024   ,                # 服务器: 1024
-            NUM_COVERAGE_SAMPLES=10000,          # 服务器: 10_000
+            NUM_COVERAGE_SAMPLES=20000,          # 服务器: 10_000
         ),
         VISIBILITY=VisibilityConfig(
             PARALLEL_WORKERS=20,                 # 服务器: 20
             SEGMENT_INTERPOLATION_STEPS=24,     # 服务器: 24
         ),
         CLIQUE=CliqueCoverConfig(
-            MIN_CLIQUE_SIZE=10,                  # 服务器: 10
-            MAX_CLIQUES_PER_ROUND=24,           # 服务器: 24
+            MIN_CLIQUE_SIZE=5,                  # 服务器: 10
+            MAX_CLIQUES_PER_ROUND=64,           # 服务器: 24
             STRATEGY="igraph_exact",            # 或 "greedy"
         ),
         IRIS_ZO=IrisZoConfig(
             NUM_PARTICLES=300,                   # 服务器: 300
-            MAX_OUTER_ITERATIONS=8,             # 服务器: 8
+            MAX_OUTER_ITERATIONS=3,             # 服务器: 8
             MAX_INNER_ITERATIONS=12,             # 服务器: 12
-            HIT_AND_RUN_MIXING_STEPS=20,        # 服务器: 20
+            HIT_AND_RUN_MIXING_STEPS=25,        # 服务器: 20
         ),
-        MAX_VCC_ROUNDS=20,                      # 服务器: 20
-        MAX_TOTAL_REGIONS=64,                   # 服务器: 64
-        COVERAGE_TARGET=0.85,                    # 服务器: 0.85
+        MAX_VCC_ROUNDS=50,                      # 服务器: 20
+        MAX_TOTAL_REGIONS=800,                   # 服务器: 64
+        COVERAGE_TARGET=0.70,                    # 服务器: 0.85
         PLAYBACK_GUI=False,                      # 服务器: False
         GUI_HOLD_SECONDS=8.0,
     )
