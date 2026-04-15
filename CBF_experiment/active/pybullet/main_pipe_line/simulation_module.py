@@ -68,42 +68,57 @@ def _prepare_urdf(
 
     tmp_root = os.path.join(tempfile.gettempdir(), "pybullet_urdf")
     tmp_pkg = os.path.join(tmp_root, package_alias)
-    if os.path.exists(tmp_pkg):
-        shutil.rmtree(tmp_pkg, ignore_errors=True)
-        for _ in range(30):
-            if not os.path.exists(tmp_pkg):
-                break
-            time.sleep(0.1)
-    shutil.copytree(source_root, tmp_pkg, dirs_exist_ok=True)
-
-    rel_urdf_dir = os.path.relpath(os.path.dirname(urdf_path), source_root)
-    new_urdf_dir = os.path.join(tmp_pkg, rel_urdf_dir)
-    os.makedirs(new_urdf_dir, exist_ok=True)
-    new_urdf = os.path.join(new_urdf_dir, "model.urdf")
-
-    with open(urdf_path, "r", encoding="utf-8") as f:
-        urdf_text = f.read()
-
-    urdf_text = urdf_text.replace(
-        f"package://{package_name}/", f"package://{package_alias}/"
+    urdf_candidate = os.path.join(
+        tmp_pkg,
+        os.path.relpath(os.path.dirname(urdf_path), source_root),
+        "model.urdf",
     )
-    if source_pkg_name != package_name:
+    if os.path.isfile(urdf_candidate) and not remove_collision:
+        return urdf_candidate, tmp_root
+
+    lock_path = tmp_pkg + ".lock"
+    os.makedirs(tmp_root, exist_ok=True)
+    import filelock  # noqa: E402
+    with filelock.FileLock(lock_path, timeout=60):
+        if os.path.isfile(urdf_candidate) and not remove_collision:
+            print(f"[info] URDF 临时目录已存在，复用: {tmp_pkg}")
+            return urdf_candidate, tmp_root
+        if os.path.exists(tmp_pkg):
+            shutil.rmtree(tmp_pkg, ignore_errors=True)
+            for _ in range(30):
+                if not os.path.exists(tmp_pkg):
+                    break
+                time.sleep(0.1)
+        shutil.copytree(source_root, tmp_pkg, dirs_exist_ok=True)
+
+        rel_urdf_dir = os.path.relpath(os.path.dirname(urdf_path), source_root)
+        new_urdf_dir = os.path.join(tmp_pkg, rel_urdf_dir)
+        os.makedirs(new_urdf_dir, exist_ok=True)
+        new_urdf = os.path.join(new_urdf_dir, "model.urdf")
+
+        with open(urdf_path, "r", encoding="utf-8") as f:
+            urdf_text = f.read()
+
         urdf_text = urdf_text.replace(
-            f"package://{source_pkg_name}/", f"package://{package_alias}/"
+            f"package://{package_name}/", f"package://{package_alias}/"
         )
+        if source_pkg_name != package_name:
+            urdf_text = urdf_text.replace(
+                f"package://{source_pkg_name}/", f"package://{package_alias}/"
+            )
 
-    if remove_collision:
-        root = ET.fromstring(urdf_text)
-        for link_el in root.findall("link"):
-            for coll_el in list(link_el.findall("collision")):
-                link_el.remove(coll_el)
-        urdf_text = ET.tostring(root, encoding="unicode")
+        if remove_collision:
+            root = ET.fromstring(urdf_text)
+            for link_el in root.findall("link"):
+                for coll_el in list(link_el.findall("collision")):
+                    link_el.remove(coll_el)
+            urdf_text = ET.tostring(root, encoding="unicode")
 
-    with open(new_urdf, "w", encoding="utf-8", newline="\n") as f:
-        f.write(urdf_text)
+        with open(new_urdf, "w", encoding="utf-8", newline="\n") as f:
+            f.write(urdf_text)
 
-    print(f"[info] URDF 已复制到临时目录: {tmp_pkg}")
-    return new_urdf, tmp_root
+        print(f"[info] URDF 已复制到临时目录: {tmp_pkg}")
+        return new_urdf, tmp_root
 
 
 # ── 仿真场景 ────────────────────────────────────────

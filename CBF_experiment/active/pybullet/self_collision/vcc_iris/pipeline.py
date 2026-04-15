@@ -27,7 +27,7 @@ from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import Co
 from CBF_experiment.active.pybullet.self_collision.vcc_iris.stages.visibility import build_visibility_graph
 
 
-def run_vcc_iris_pipeline(cfg: ExperimentConfig = ExperimentConfig()) -> ExperimentReport:
+def run_vcc_iris_pipeline(cfg: ExperimentConfig = ExperimentConfig(), *, oracle=None) -> ExperimentReport:
     t_pipeline = time.perf_counter()
     stage_print("=" * 56)
     stage_print("VCC + IRIS-ZO iterative pipeline (Algorithm 1)")
@@ -36,7 +36,9 @@ def run_vcc_iris_pipeline(cfg: ExperimentConfig = ExperimentConfig()) -> Experim
                 f"target={cfg.COVERAGE_TARGET}  max_rounds={cfg.MAX_VCC_ROUNDS}  "
                 f"max_regions={cfg.MAX_TOTAL_REGIONS}")
 
-    oracle = CoalSelfCollisionOracle(cfg.ROBOT)
+    _oracle_created_here = oracle is None
+    if oracle is None:
+        oracle = CoalSelfCollisionOracle(cfg.ROBOT)
     try:
         all_regions: list = []
         round_stats_list: list[RoundStats] = []
@@ -174,7 +176,8 @@ def run_vcc_iris_pipeline(cfg: ExperimentConfig = ExperimentConfig()) -> Experim
         )
 
     finally:
-        oracle.close()
+        if _oracle_created_here:
+            oracle.close()
 
     dt = time.perf_counter() - t_pipeline
     stage_print("=" * 56)
