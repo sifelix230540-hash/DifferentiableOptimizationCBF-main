@@ -29,7 +29,7 @@ class VisibilityGraphTests(unittest.TestCase):
         graph = build_visibility_graph(
             samples,
             FakeVisibilityOracle(),
-            VisibilityConfig(MAX_CANDIDATE_PAIRS=None, SEGMENT_INTERPOLATION_STEPS=4),
+            VisibilityConfig(SEGMENT_INTERPOLATION_STEPS=4),
         )
 
         self.assertEqual(graph.num_candidate_pairs, 3)

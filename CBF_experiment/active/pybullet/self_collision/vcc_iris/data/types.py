@@ -71,11 +71,25 @@ class CoverageEstimate:
 
 
 @dataclass(frozen=True)
+class RoundStats:
+    """每轮 VCC 迭代的统计信息。"""
+    round_id: int
+    num_samples: int
+    num_pairs: int
+    num_visible_edges: int
+    num_cliques: int
+    clique_sizes: tuple[int, ...]
+    num_regions_grown: int
+    coverage_after: float
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True)
 class ExperimentReport:
     regions: tuple[IrisRegion, ...]
     coverage: CoverageEstimate
-    visibility_stats: dict
-    clique_stats: dict
-    sample_stats: dict
+    round_stats: tuple[RoundStats, ...] = ()
+    visibility_stats: dict = field(default_factory=dict)
+    clique_stats: dict = field(default_factory=dict)
+    sample_stats: dict = field(default_factory=dict)
     curve_report: dict = field(default_factory=dict)
-

@@ -32,10 +32,24 @@ def write_experiment_report(report: ExperimentReport, cover_json_path: str, expe
             "confidence_radius": float(report.coverage.confidence_radius),
         },
     }
+    round_stats_payload = []
+    for rs in (report.round_stats or ()):
+        round_stats_payload.append({
+            "round_id": int(rs.round_id),
+            "num_samples": int(rs.num_samples),
+            "num_pairs": int(rs.num_pairs),
+            "num_visible_edges": int(rs.num_visible_edges),
+            "num_cliques": int(rs.num_cliques),
+            "clique_sizes": list(rs.clique_sizes),
+            "num_regions_grown": int(rs.num_regions_grown),
+            "coverage_after": float(rs.coverage_after),
+            "elapsed_seconds": float(rs.elapsed_seconds),
+        })
     experiment_payload = {
         "sample_stats": dict(report.sample_stats),
         "visibility_stats": dict(report.visibility_stats),
         "clique_stats": dict(report.clique_stats),
+        "round_stats": round_stats_payload,
         "coverage": cover_payload["coverage"],
         "curve_report": dict(report.curve_report),
         "regions": [_region_payload(region) for region in report.regions],

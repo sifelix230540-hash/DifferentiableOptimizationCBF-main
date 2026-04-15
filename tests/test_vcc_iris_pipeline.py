@@ -25,6 +25,7 @@ from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import Ro
 
 class FakePipelineOracle:
     def __init__(self, config):
+        self.config = config
         self.metadata = RobotModelMetadata(
             revolute_ids=(0, 1),
             revolute_names=("q0", "q1"),
@@ -46,10 +47,9 @@ class FakePipelineOracle:
 
     def query(self, q):
         q = np.asarray(q, dtype=float)
-        is_collision = self.is_self_collision(q)
         clearance = 0.9 - float(np.linalg.norm(q))
         return {
-            "is_collision": bool(is_collision),
+            "is_collision": self.is_self_collision(q),
             "min_clearance": float(clearance),
             "active_pair": None,
             "contact_penetration_depth": None,
@@ -66,21 +66,11 @@ class FakePipelineOracle:
         return [{"pair": (0, 1), "distance": 0.1, "is_collision": False}]
 
     def first_collision_on_segment(self, q_free, q_target, *, num_steps, bisection_steps):
-        return self.first_pair_collision_on_segment(
-            q_free,
-            q_target,
-            (0, 1),
-            num_steps=num_steps,
-            bisection_steps=bisection_steps,
-        )
-
-    def first_pair_collision_on_segment(self, q_free, q_target, pair, *, num_steps, bisection_steps):
         q_free = np.asarray(q_free, dtype=float)
         q_target = np.asarray(q_target, dtype=float)
         if not self.is_self_collision(q_target):
             return None
-        low = q_free.copy()
-        high = q_target.copy()
+        low, high = q_free.copy(), q_target.copy()
         for _ in range(int(bisection_steps)):
             mid = 0.5 * (low + high)
             if self.is_self_collision(mid):
@@ -90,7 +80,7 @@ class FakePipelineOracle:
         delta = high - low
         normal = delta / max(np.linalg.norm(delta), 1e-12)
         return {
-            "pair": tuple(pair),
+            "pair": (0, 1),
             "q_free": low,
             "q_collision": high,
             "normal": normal,
@@ -101,33 +91,38 @@ class FakePipelineOracle:
 
 
 class PipelineTests(unittest.TestCase):
-    def test_pipeline_runs_with_fake_oracle_and_writes_json(self):
+    def test_iterative_pipeline_runs_with_fake_oracle(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg = ExperimentConfig(
                 ROBOT=RobotQueryConfig(),
                 SAMPLING=SamplingConfig(
-                    NUM_SEED_SAMPLES=24,
+                    NUM_SAMPLES_PER_ROUND=20,
                     BATCH_SIZE=32,
-                    SAMPLE_CACHE_PATH=str(pathlib.Path(tmpdir) / "samples.json"),
+                    NUM_COVERAGE_SAMPLES=50,
                 ),
-                VISIBILITY=VisibilityConfig(MAX_CANDIDATE_PAIRS=None, SEGMENT_INTERPOLATION_STEPS=8),
-                CLIQUE=CliqueCoverConfig(MIN_CLIQUE_SIZE=4, MAX_CLIQUES=4),
+                VISIBILITY=VisibilityConfig(SEGMENT_INTERPOLATION_STEPS=8),
+                CLIQUE=CliqueCoverConfig(
+                    MIN_CLIQUE_SIZE=3,
+                    MAX_CLIQUES_PER_ROUND=4,
+                    STRATEGY="greedy",
+                ),
                 IRIS_ZO=IrisZoConfig(
                     MAX_OUTER_ITERATIONS=2,
                     MAX_INNER_ITERATIONS=3,
                     NUM_PARTICLES=32,
                     NUM_BISECTION_STEPS=8,
                     MAX_NEW_FACES_PER_INNER_ITER=4,
-                    MAX_REGIONS=3,
                 ),
                 REPORTING=ReportingConfig(
                     OUTPUT_DIR=tmpdir,
                     COVER_JSON=str(pathlib.Path(tmpdir) / "cover.json"),
                     EXPERIMENT_JSON=str(pathlib.Path(tmpdir) / "experiment.json"),
                 ),
+                MAX_VCC_ROUNDS=3,
+                MAX_TOTAL_REGIONS=6,
+                COVERAGE_TARGET=0.2,
                 CURVE_NUM_POINTS=20,
                 CURVE_MAX_ATTEMPTS=4,
-                COVERAGE_TARGET=0.2,
             )
             with mock.patch(
                 "CBF_experiment.active.pybullet.self_collision.vcc_iris.pipeline.CoalSelfCollisionOracle",
@@ -136,10 +131,10 @@ class PipelineTests(unittest.TestCase):
                 report = run_vcc_iris_pipeline(cfg)
 
             self.assertGreaterEqual(len(report.regions), 1)
+            self.assertGreater(len(report.round_stats), 0)
             self.assertTrue(pathlib.Path(cfg.REPORTING.COVER_JSON).exists())
             self.assertTrue(pathlib.Path(cfg.REPORTING.EXPERIMENT_JSON).exists())
 
 
 if __name__ == "__main__":
     unittest.main()
-

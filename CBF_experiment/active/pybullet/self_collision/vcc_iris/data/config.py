@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import sys
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+REPO_ROOT = Path(__file__).resolve().parents[6]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -23,28 +23,25 @@ class RobotQueryConfig:
 
 @dataclass(frozen=True)
 class SamplingConfig:
-    NUM_SEED_SAMPLES: int = 3000
+    NUM_SAMPLES_PER_ROUND: int = 1000
     BATCH_SIZE: int = 256
     RNG_SEED: int = 11
-    MODE: str = "uniform_rejection"
     SAMPLE_CACHE_PATH: str = str(Path(_resolve("artifacts/sdf_exp/vcc_iris_free_samples.json")))
-    NUM_COVERAGE_SAMPLES: int = 4000
+    NUM_COVERAGE_SAMPLES: int = 5000
 
 
 @dataclass(frozen=True)
 class VisibilityConfig:
-    MAX_CANDIDATE_PAIRS: int | None = 20000
     SEGMENT_INTERPOLATION_STEPS: int = 18
-    BISECTION_STEPS: int = 12
     RANDOM_SEED: int = 17
     PARALLEL_WORKERS: int = 1
 
 
 @dataclass(frozen=True)
 class CliqueCoverConfig:
-    MIN_CLIQUE_SIZE: int = 8
-    MAX_CLIQUES: int = 24
-    STRATEGY: str = "greedy"
+    MIN_CLIQUE_SIZE: int = 10
+    MAX_CLIQUES_PER_ROUND: int = 24
+    STRATEGY: str = "igraph_exact"
 
 
 @dataclass(frozen=True)
@@ -60,7 +57,6 @@ class IrisZoConfig:
     MAX_NEW_FACES_PER_INNER_ITER: int = 12
     HIT_AND_RUN_MIXING_STEPS: int = 12
     CONVERGENCE_TOL: float = 1e-3
-    MAX_REGIONS: int = 12
     STEPBACK_MARGIN: float = 0.01
     RNG_SEED: int = 23
 
@@ -80,9 +76,12 @@ class ExperimentConfig:
     CLIQUE: CliqueCoverConfig = field(default_factory=CliqueCoverConfig)
     IRIS_ZO: IrisZoConfig = field(default_factory=IrisZoConfig)
     REPORTING: ReportingConfig = field(default_factory=ReportingConfig)
+
+    MAX_VCC_ROUNDS: int = 20
+    MAX_TOTAL_REGIONS: int = 64
+    COVERAGE_TARGET: float = 0.7
+
     CURVE_NUM_POINTS: int = 60
     CURVE_MAX_ATTEMPTS: int = 16
     PLAYBACK_GUI: bool = False
     GUI_HOLD_SECONDS: float = 3.0
-    COVERAGE_TARGET: float = 0.7
-
