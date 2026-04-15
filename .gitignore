@@ -171,3 +171,10 @@ artifacts/sdf_exp/boundary_dataset.npz
 artifacts/sdf_exp/joint_trajectory.json
 artifacts/sdf_exp/self_collision_eval_samples.json
 artifacts/voxel_box_exp/boxes_3d.html
+
+# csdecomp (third-party GPU library)
+bazel-*
+MODULE.bazel.*
+_plan/
+*.nsys*
+*doxyoutput*
