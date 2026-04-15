@@ -109,8 +109,7 @@ def run_iris_zo(
     rng = np.random.default_rng(int(cfg.RNG_SEED) + int(region_id))
     C = _initial_metric(ellipsoid, cfg)
     sampler_state = center.copy()
-    sign, log_det = np.linalg.slogdet(C)
-    last_log_det = float(log_det if sign > 0.0 else math.log(max(float(cfg.STARTING_BALL_RADIUS), 1e-12)))
+    last_log_det = -float("inf")
     final_A = np.asarray(A_box, dtype=float).copy()
     final_b = np.asarray(b_box, dtype=float).copy()
     iter_history: list[dict] = []
@@ -247,16 +246,30 @@ def run_iris_zo(
         new_center = np.asarray(mvie["center"], dtype=float)
         new_C = np.asarray(mvie["C"], dtype=float)
         new_log_det = float(mvie["log_det"])
-        if oracle.is_self_collision(new_center):
-            break
-        if new_log_det + 1e-9 < last_log_det:
+
+        final_A = candidate_A
+        final_b = candidate_b
+
+        center_in_collision = oracle.is_self_collision(new_center)
+        volume_shrank = (new_log_det + 1e-9 < last_log_det)
+
+        if center_in_collision or volume_shrank:
+            iter_history.append({
+                "outer_iteration": int(outer_iter),
+                "center": center.tolist(),
+                "log_det": float(new_log_det),
+                "num_planes": int(final_A.shape[0]),
+                "inner_reports": inner_reports,
+                "early_stop": "center_collision" if center_in_collision else "volume_shrank",
+            })
             break
 
+        rel_growth = (new_log_det - last_log_det) / max(abs(last_log_det), 1e-9) if last_log_det > -float("inf") else float("inf")
         center = new_center
         C = new_C
         sampler_state = center.copy()
-        final_A = candidate_A
-        final_b = candidate_b
+        last_log_det = new_log_det
+        metric_matrix = _metric_matrix(C)
         iter_history.append({
             "outer_iteration": int(outer_iter),
             "center": center.tolist(),
@@ -264,9 +277,6 @@ def run_iris_zo(
             "num_planes": int(final_A.shape[0]),
             "inner_reports": inner_reports,
         })
-        rel_growth = (new_log_det - last_log_det) / max(abs(last_log_det), 1e-9)
-        last_log_det = new_log_det
-        metric_matrix = _metric_matrix(C)
         stage_print(f"  R{region_id} outer={outer_iter}: log_det={new_log_det:+.4f}  planes={final_A.shape[0]}  growth={rel_growth:.6f}")
         if rel_growth < float(cfg.CONVERGENCE_TOL):
             break
