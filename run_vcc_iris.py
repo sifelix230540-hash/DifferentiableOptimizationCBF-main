@@ -16,29 +16,29 @@ def main():
     # 本地小规模测试默认值；服务器参数见注释
     cfg = ExperimentConfig(
         SAMPLING=SamplingConfig(
-            NUM_SAMPLES_PER_ROUND=200,          # 服务器: 1500
-            BATCH_SIZE=256,                     # 服务器: 1024
-            NUM_COVERAGE_SAMPLES=3000,          # 服务器: 10_000
+            NUM_SAMPLES_PER_ROUND=1500,          # 服务器: 1500
+            BATCH_SIZE=1024   ,                # 服务器: 1024
+            NUM_COVERAGE_SAMPLES=10000,          # 服务器: 10_000
         ),
         VISIBILITY=VisibilityConfig(
-            PARALLEL_WORKERS=1,                 # 服务器: 20
-            SEGMENT_INTERPOLATION_STEPS=18,     # 服务器: 24
+            PARALLEL_WORKERS=20,                 # 服务器: 20
+            SEGMENT_INTERPOLATION_STEPS=24,     # 服务器: 24
         ),
         CLIQUE=CliqueCoverConfig(
-            MIN_CLIQUE_SIZE=6,                  # 服务器: 10
-            MAX_CLIQUES_PER_ROUND=12,           # 服务器: 24
+            MIN_CLIQUE_SIZE=10,                  # 服务器: 10
+            MAX_CLIQUES_PER_ROUND=24,           # 服务器: 24
             STRATEGY="igraph_exact",            # 或 "greedy"
         ),
         IRIS_ZO=IrisZoConfig(
-            NUM_PARTICLES=64,                   # 服务器: 300
-            MAX_OUTER_ITERATIONS=5,             # 服务器: 8
-            MAX_INNER_ITERATIONS=8,             # 服务器: 12
-            HIT_AND_RUN_MIXING_STEPS=12,        # 服务器: 20
+            NUM_PARTICLES=300,                   # 服务器: 300
+            MAX_OUTER_ITERATIONS=8,             # 服务器: 8
+            MAX_INNER_ITERATIONS=12,             # 服务器: 12
+            HIT_AND_RUN_MIXING_STEPS=20,        # 服务器: 20
         ),
-        MAX_VCC_ROUNDS=10,                      # 服务器: 20
-        MAX_TOTAL_REGIONS=32,                   # 服务器: 64
-        COVERAGE_TARGET=0.7,                    # 服务器: 0.85
-        PLAYBACK_GUI=True,                      # 服务器: False
+        MAX_VCC_ROUNDS=20,                      # 服务器: 20
+        MAX_TOTAL_REGIONS=64,                   # 服务器: 64
+        COVERAGE_TARGET=0.85,                    # 服务器: 0.85
+        PLAYBACK_GUI=False,                      # 服务器: False
         GUI_HOLD_SECONDS=8.0,
     )
 
