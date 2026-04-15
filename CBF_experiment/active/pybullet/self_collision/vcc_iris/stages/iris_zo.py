@@ -12,9 +12,9 @@ from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.polytope_sampl
     sample_polytope_hit_and_run,
 )
 from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.statistical_test import (
+    iteration_delta,
     required_trials,
     unadaptive_collision_test,
-    union_bound_delta,
 )
 from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.progress import ProgressBar, stage_print
 from CBF_experiment.active.pybullet.self_collision.vcc_iris.data.types import CliqueEllipsoid, IrisRegion
@@ -119,6 +119,7 @@ def run_iris_zo(
     margin = float(cfg.STEPBACK_MARGIN)
     has_fast_bisect = hasattr(oracle, "first_collision_on_segment_fast")
 
+    global_k = 0
     for outer_iter in range(1, int(cfg.MAX_OUTER_ITERATIONS) + 1):
         w_A = final_A.copy()
         w_b = final_b.copy()
@@ -126,18 +127,18 @@ def run_iris_zo(
         metric_matrix = _metric_matrix(C)
 
         for inner_iter in range(1, int(cfg.MAX_INNER_ITERATIONS) + 1):
+            global_k += 1
             if not is_inside_polytope(w_A, w_b, sampler_state):
                 sampler_state = center.copy()
-            delta_ik = union_bound_delta(
+            delta_k = iteration_delta(
                 total_delta=float(cfg.DELTA),
-                outer_iter=outer_iter,
-                inner_iter=inner_iter,
+                iteration=global_k,
             )
             sample_budget = max(
                 Np,
                 required_trials(
                     epsilon=float(cfg.EPSILON),
-                    delta=delta_ik,
+                    delta=delta_k,
                     tau=float(cfg.TAU),
                 ),
             )
@@ -167,8 +168,7 @@ def run_iris_zo(
                 epsilon=float(cfg.EPSILON),
                 total_delta=float(cfg.DELTA),
                 tau=float(cfg.TAU),
-                outer_iter=outer_iter,
-                inner_iter=inner_iter,
+                iteration=global_k,
             )
 
             plane_reports: list[dict] = []

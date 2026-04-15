@@ -50,12 +50,12 @@ class IrisZoConfig:
     DELTA: float = 0.10
     TAU: float = 0.50
     STARTING_BALL_RADIUS: float = 0.05
-    MAX_OUTER_ITERATIONS: int = 5
+    MAX_OUTER_ITERATIONS: int = 3
     MAX_INNER_ITERATIONS: int = 8
     NUM_PARTICLES: int = 64
     NUM_BISECTION_STEPS: int = 10
     MAX_NEW_FACES_PER_INNER_ITER: int = 12
-    HIT_AND_RUN_MIXING_STEPS: int = 12
+    HIT_AND_RUN_MIXING_STEPS: int = 25
     CONVERGENCE_TOL: float = 1e-3
     STEPBACK_MARGIN: float = 0.01
     RNG_SEED: int = 23

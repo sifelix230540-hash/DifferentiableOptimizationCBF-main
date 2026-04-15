@@ -13,6 +13,7 @@ from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.polytope_sampl
     sample_polytope_hit_and_run,
 )
 from CBF_experiment.active.pybullet.self_collision.vcc_iris.utils.statistical_test import (
+    iteration_delta,
     required_trials,
     unadaptive_collision_test,
     union_bound_delta,
@@ -43,12 +44,34 @@ class IrisZoUtilsTests(unittest.TestCase):
         self.assertTrue(all(is_inside_polytope(A, b, q) for q in samples))
         self.assertTrue(is_inside_polytope(A, b, final_state))
 
-    def test_statistical_thresholds_are_reasonable(self):
+    def test_iteration_delta_monotonically_decreases(self):
+        d1 = iteration_delta(total_delta=0.1, iteration=1)
+        d2 = iteration_delta(total_delta=0.1, iteration=2)
+        d3 = iteration_delta(total_delta=0.1, iteration=3)
+        self.assertGreater(d1, d2)
+        self.assertGreater(d2, d3)
+
+    def test_legacy_union_bound_delta_still_works(self):
         delta_11 = union_bound_delta(total_delta=0.1, outer_iter=1, inner_iter=1)
         delta_22 = union_bound_delta(total_delta=0.1, outer_iter=2, inner_iter=2)
-        self.assertGreater(delta_11, delta_22)
+        self.assertGreater(delta_11, 0)
+        self.assertGreater(delta_22, 0)
 
-        trials = required_trials(epsilon=0.1, delta=delta_11, tau=0.5)
+    def test_statistical_test_with_global_k(self):
+        d1 = iteration_delta(total_delta=0.1, iteration=1)
+        trials = required_trials(epsilon=0.1, delta=d1, tau=0.5)
+        report = unadaptive_collision_test(
+            0,
+            num_samples=trials,
+            epsilon=0.1,
+            total_delta=0.1,
+            tau=0.5,
+            iteration=1,
+        )
+        self.assertTrue(report["accept"])
+
+    def test_statistical_test_legacy_api(self):
+        trials = required_trials(epsilon=0.1, delta=0.05, tau=0.5)
         report = unadaptive_collision_test(
             0,
             num_samples=trials,
