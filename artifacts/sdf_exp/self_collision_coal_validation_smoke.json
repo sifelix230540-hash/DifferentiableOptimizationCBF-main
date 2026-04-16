@@ -1,0 +1,206 @@
+{
+  "sample_json": "C:\\Users\\12049\\OneDrive\\Desktop\\科研相关\\博一春季\\免示教焊接轨迹规划\\相关资料\\CBF_grad_optim_on_trajPlanning\\DifferentiableOptimizationCBF-main\\artifacts\\sdf_exp\\self_collision_eval_samples.json",
+  "num_samples": 4,
+  "num_collision_samples_checked": 2,
+  "num_free_samples_checked": 2,
+  "agreement_rate": 0.75,
+  "disagreement_count": 1,
+  "mean_abs_distance_delta": 0.027466555786253344,
+  "joint_indices": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "joint_names": [
+    "link04",
+    "link05",
+    "link06",
+    "link07",
+    "link08",
+    "link09"
+  ],
+  "monitored_pairs": [
+    [
+      4,
+      6
+    ],
+    [
+      4,
+      7
+    ],
+    [
+      4,
+      8
+    ],
+    [
+      4,
+      9
+    ],
+    [
+      5,
+      7
+    ],
+    [
+      5,
+      8
+    ],
+    [
+      5,
+      9
+    ],
+    [
+      6,
+      8
+    ],
+    [
+      6,
+      9
+    ],
+    [
+      7,
+      9
+    ]
+  ],
+  "samples": [
+    {
+      "label": "collision",
+      "sample_index": 0,
+      "revolute_q": [
+        -0.9027136385900789,
+        1.3991820386415892,
+        2.970519403218163,
+        -6.091064059343084,
+        -3.090820260916178,
+        1.308738466792171
+      ],
+      "stored_min_distance": -0.06572304661936643,
+      "pybullet_min_distance": -0.06572304661936643,
+      "pybullet_is_collision": true,
+      "pybullet_active_pair": [
+        5,
+        7
+      ],
+      "coal_min_distance": 0.0,
+      "coal_is_collision": true,
+      "coal_active_pair": [
+        4,
+        6
+      ],
+      "distance_delta_coal_minus_pybullet": 0.06572304661936643,
+      "collision_agree": true
+    },
+    {
+      "label": "collision",
+      "sample_index": 1,
+      "revolute_q": [
+        -5.230931199883484,
+        6.255097519950492,
+        4.176394338925646,
+        -5.82104101260933,
+        0.8487323079486142,
+        1.3740118981635883
+      ],
+      "stored_min_distance": -0.017548411043957685,
+      "pybullet_min_distance": -0.017548411043957685,
+      "pybullet_is_collision": true,
+      "pybullet_active_pair": [
+        6,
+        9
+      ],
+      "coal_min_distance": 0.022340033151456388,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        6,
+        9
+      ],
+      "distance_delta_coal_minus_pybullet": 0.03988844419541407,
+      "collision_agree": false
+    },
+    {
+      "label": "free",
+      "sample_index": 0,
+      "revolute_q": [
+        4.336347876215551,
+        -4.260347747132535,
+        0.7256410800162332,
+        -1.6577602210701015,
+        -3.5821533090973934,
+        -1.4347808140390965
+      ],
+      "stored_min_distance": 0.0260230688387759,
+      "pybullet_min_distance": 0.0260230688387759,
+      "pybullet_is_collision": false,
+      "pybullet_active_pair": [
+        6,
+        8
+      ],
+      "coal_min_distance": 0.028011635598743086,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        6,
+        8
+      ],
+      "distance_delta_coal_minus_pybullet": 0.001988566759967187,
+      "collision_agree": true
+    },
+    {
+      "label": "free",
+      "sample_index": 1,
+      "revolute_q": [
+        -6.1961578311919,
+        -4.032760406856729,
+        -4.210721495941901,
+        -0.4780521256336492,
+        0.8419942429586493,
+        -0.6043279295728166
+      ],
+      "stored_min_distance": 0.025712307233339178,
+      "pybullet_min_distance": 0.025712307233339178,
+      "pybullet_is_collision": false,
+      "pybullet_active_pair": [
+        7,
+        9
+      ],
+      "coal_min_distance": 0.02797847280360488,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        7,
+        9
+      ],
+      "distance_delta_coal_minus_pybullet": 0.0022661655702657033,
+      "collision_agree": true
+    }
+  ],
+  "disagreements": [
+    {
+      "label": "collision",
+      "sample_index": 1,
+      "revolute_q": [
+        -5.230931199883484,
+        6.255097519950492,
+        4.176394338925646,
+        -5.82104101260933,
+        0.8487323079486142,
+        1.3740118981635883
+      ],
+      "stored_min_distance": -0.017548411043957685,
+      "pybullet_min_distance": -0.017548411043957685,
+      "pybullet_is_collision": true,
+      "pybullet_active_pair": [
+        6,
+        9
+      ],
+      "coal_min_distance": 0.022340033151456388,
+      "coal_is_collision": false,
+      "coal_active_pair": [
+        6,
+        9
+      ],
+      "distance_delta_coal_minus_pybullet": 0.03988844419541407,
+      "collision_agree": false
+    }
+  ]
+}

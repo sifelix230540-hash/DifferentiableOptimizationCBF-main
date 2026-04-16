@@ -1,0 +1,24 @@
+{
+  "sample_stats": {
+    "num_free_samples": 24,
+    "cache_path": "artifacts/sdf_exp/vcc_iriszo_perf_samples.json",
+    "iris_mode": "IRIS-ZO"
+  },
+  "visibility_stats": {
+    "num_vertices": 24,
+    "num_candidate_pairs": 200,
+    "num_visible_edges": 16
+  },
+  "clique_stats": {
+    "num_cliques": 0,
+    "clique_sizes": []
+  },
+  "coverage": {
+    "num_hits": 0,
+    "num_samples": 24,
+    "ratio": 0.0,
+    "confidence_radius": 4.000833246545858e-07
+  },
+  "curve_report": {},
+  "regions": []
+}

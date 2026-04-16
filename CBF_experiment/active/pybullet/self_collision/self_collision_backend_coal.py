@@ -28,7 +28,7 @@ def _decode_path(path_value) -> str:
 
 
 def _build_transform(world_pos, world_quat) -> coal.Transform3s:
-    tf = coal.Transform3f()
+    tf = coal.Transform3s()
     rot = np.asarray(p.getMatrixFromQuaternion(world_quat), dtype=float).reshape(3, 3)
     tf.setRotation(rot)
     tf.setTranslation(np.asarray(world_pos, dtype=float).reshape(3))

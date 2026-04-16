@@ -1,0 +1,23 @@
+{
+  "sample_stats": {
+    "num_free_samples": 80,
+    "cache_path": "artifacts/sdf_exp/vcc_iris_smoke_samples.json"
+  },
+  "visibility_stats": {
+    "num_vertices": 80,
+    "num_candidate_pairs": 400,
+    "num_visible_edges": 35
+  },
+  "clique_stats": {
+    "num_cliques": 0,
+    "clique_sizes": []
+  },
+  "coverage": {
+    "num_hits": 0,
+    "num_samples": 80,
+    "ratio": 0.0,
+    "confidence_radius": 2.1913466179497938e-07
+  },
+  "curve_report": {},
+  "regions": []
+}

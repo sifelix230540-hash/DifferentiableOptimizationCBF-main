@@ -5,6 +5,7 @@
     python replay_vcc_iris_gui.py path/to/experiment.json   # 指定文件
     python replay_vcc_iris_gui.py --speed 0.1               # 调整每帧间隔(秒)
     python replay_vcc_iris_gui.py --hold 10                 # 播放结束后保持窗口(秒)
+    python replay_vcc_iris_gui.py --video out.mp4           # 回放并录制视频
 """
 import argparse
 import sys
@@ -29,11 +30,19 @@ def main():
     )
     parser.add_argument("--speed", type=float, default=0.15, help="每帧间隔秒数 (默认 0.15)")
     parser.add_argument("--hold", type=float, default=5.0, help="播放结束后保持窗口秒数 (默认 5.0)")
+    parser.add_argument("--video", type=str, default=None, help="可选：输出 mp4 路径")
+    parser.add_argument("--fps", type=int, default=15, help="录制视频帧率 (默认 15)")
     args = parser.parse_args()
 
     from CBF_experiment.active.pybullet.self_collision.vcc_iris.io.gui import replay_from_json
 
-    replay_from_json(args.json_path, sleep_dt=args.speed, hold_seconds=args.hold)
+    replay_from_json(
+        args.json_path,
+        sleep_dt=args.speed,
+        hold_seconds=args.hold,
+        video_output_path=args.video,
+        video_fps=args.fps,
+    )
 
 
 if __name__ == "__main__":
