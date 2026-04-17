@@ -21,15 +21,9 @@ _worker_oracle = None
 
 
 def _worker_init(oracle_factory_spec: tuple):
-    """在子进程中根据工厂规格重建 oracle。
-
-    oracle_factory_spec = (module_path, class_name, kwargs_dict)
-    """
+    """在子进程中根据工厂规格重建 oracle（支持 DualOracle/NegationOracle 嵌套）。"""
     global _worker_oracle
-    module_path, class_name, kwargs = oracle_factory_spec
-    mod = importlib.import_module(module_path)
-    cls = getattr(mod, class_name)
-    _worker_oracle = cls(**kwargs)
+    _worker_oracle = _instantiate_from_spec(oracle_factory_spec)
 
 
 def _worker_check_edges(task):
@@ -67,7 +61,49 @@ def _build_oracle_factory_spec(oracle) -> tuple | None:
     """从 oracle 实例推导出可序列化的工厂规格。
 
     返回 (module_path, class_name, kwargs_dict)，或 None 表示不支持并行。
+    支持嵌套包装（DualOracle / NegationOracle）—— 通过递归构建 base 的 spec，
+    在 worker 端再用同样方式恢复。
     """
+    # ── DualOracle / NegationOracle：递归构建 base，再包一层 ──
+    try:
+        from CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.dual_oracle import (
+            DualOracle,
+            NegationOracle,
+        )
+    except ImportError:
+        DualOracle = None  # type: ignore
+        NegationOracle = None  # type: ignore
+
+    if DualOracle is not None and isinstance(oracle, DualOracle):
+        base_spec = _build_oracle_factory_spec(oracle.base)
+        if base_spec is None:
+            return None
+        # 把对方多面体序列化为 list of (A_list, b_list)
+        opp_serialized = [
+            (np.asarray(A, dtype=float).tolist(), np.asarray(b, dtype=float).tolist())
+            for A, b in oracle._opposite
+        ]
+        return (
+            "CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.dual_oracle",
+            "DualOracle",
+            {
+                "__base_spec__": base_spec,
+                "opposite_polytopes_serialized": opp_serialized,
+                "margin": float(oracle._margin),
+            },
+        )
+
+    if NegationOracle is not None and isinstance(oracle, NegationOracle):
+        base_spec = _build_oracle_factory_spec(oracle.base)
+        if base_spec is None:
+            return None
+        return (
+            "CBF_experiment.active.pybullet.self_collision.vcc_iris.robot.dual_oracle",
+            "NegationOracle",
+            {"__base_spec__": base_spec},
+        )
+
+    # ── 叶子 oracle：CoalSelfCollisionOracle / ManipulabilityOracle ──
     if not hasattr(oracle, "config") or not hasattr(oracle.config, "__dataclass_fields__"):
         return None
 
@@ -104,6 +140,31 @@ def _build_oracle_factory_spec(oracle) -> tuple | None:
         pass
 
     return None
+
+
+def _instantiate_from_spec(spec: tuple):
+    """从 spec 在 worker 进程中重建 oracle。支持递归 (DualOracle / NegationOracle)。"""
+    module_path, class_name, kwargs = spec
+    mod = importlib.import_module(module_path)
+    cls = getattr(mod, class_name)
+
+    if "__base_spec__" in kwargs:
+        kwargs = dict(kwargs)
+        base_spec = kwargs.pop("__base_spec__")
+        base = _instantiate_from_spec(base_spec)
+        if class_name == "DualOracle":
+            opp_serialized = kwargs.pop("opposite_polytopes_serialized", [])
+            opp = [
+                (np.asarray(A, dtype=float), np.asarray(b, dtype=float))
+                for A, b in opp_serialized
+            ]
+            return cls(base, opp, margin=kwargs.get("margin", 1e-3))
+        elif class_name == "NegationOracle":
+            return cls(base)
+        else:
+            raise RuntimeError(f"未知的包装 oracle: {class_name}")
+
+    return cls(**kwargs)
 
 
 def build_visibility_graph(
